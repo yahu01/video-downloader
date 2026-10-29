@@ -217,6 +217,16 @@ def _pick_stream(meta, fmt):
 
 @app.get("/api/download")
 def api_download():
+    try:
+        return _download_impl()
+    except Exception:
+        import traceback
+        tb = traceback.format_exc()[-1500:]
+        print("DOWNLOAD ERROR:", tb, flush=True)
+        return jsonify(error="SERVER TRACEBACK: " + tb.replace(chr(10), " | ")), 500
+
+
+def _download_impl():
     """GET 流式下载：dump-json 拿直链 → 服务端 requests/ffmpeg 拉流转发给浏览器。
     单流（progressive/音频）requests 转发；分离流（YouTube 高清）ffmpeg 管道实时合并。"""
     import requests as _rq

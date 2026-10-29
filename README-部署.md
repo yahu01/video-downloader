@@ -26,6 +26,10 @@
 - ⚠ 单文件建议 ≤ 2GB（函数时限内传不完会中断）；Vercel Hobby 函数 300 秒上限
 - ⚠ 无登录/无付费（无数据库）；需要时接 Neon Postgres（免费）二期加回
 
+## YouTube 风控解法（COOKIES）
+
+YouTube 对数据中心 IP 有登录风控（解析报 "requires sign-in"）。解法：把浏览器里的 YouTube cookies 导出为 Netscape cookies.txt 格式（浏览器插件 Get cookies.txt），**用文本编辑器打开把全部内容**填到 Vercel 项目的 Settings → Environment Variables → 新增 `COOKIES` → Redeploy。之后 YouTube 解析/下载恢复正常（cookie 一般可维持数月）。
+
 ## 本地测试
 
 ```

@@ -5,13 +5,16 @@
       （无磁盘、无队列、无任务面板，浏览器自带进度条）。
 限制：单文件建议 ≤2GB；国内站点（B站/小红书等）因境外节点+风控不可用，主攻境外站点。
 """
+import urllib.request
+import urllib.parse
+import urllib.error
 import os
 import re
 import json
 import subprocess
 import sys
 
-from flask import Flask, jsonify, request, Response, send_from_directory
+from flask import Flask, jsonify, redirect, request, Response, send_from_directory, session
 import yt_dlp
 
 app = Flask(__name__, static_folder=None)
@@ -53,6 +56,70 @@ def ffmpeg_path():
     return _FF
 
 
+# ---------------- 用户体系（GitHub 仓库当数据库） ----------------
+
+DATA_REPO = os.environ.get("DATA_REPO", "yahu01/video-downloader-data")
+GH_TOKEN = os.environ.get("GITHUB_TOKEN", "")
+import hashlib as _hashlib
+import base64 as _b64
+import time as _time
+import secrets as _secrets
+from werkzeug.security import generate_password_hash, check_password_hash
+
+app.secret_key = _hashlib.sha256(("vd-v1:" + GH_TOKEN).encode()).digest()
+
+_DATA_CACHE = {"sha": None, "data": None, "ts": 0.0}
+_DATA_LOCK = __import__("threading").Lock()
+
+
+def _gh(path, method="GET", body=None):
+    req = urllib.request.Request(
+        "https://api.github.com" + path,
+        data=json.dumps(body).encode() if body is not None else None, method=method,
+        headers={"Authorization": "Bearer " + GH_TOKEN,
+                 "Accept": "application/vnd.github+json",
+                 "User-Agent": "video-downloader"})
+    return json.loads(urllib.request.urlopen(req, timeout=30).read())
+
+
+def data_read(force=False):
+    """读 data.json（GitHub Contents API，10 秒实例缓存）"""
+    with _DATA_LOCK:
+        if not force and _DATA_CACHE["data"] is not None and _time.time() - _DATA_CACHE["ts"] < 10:
+            return _DATA_CACHE["data"]
+        r = _gh(f"/repos/{DATA_REPO}/contents/data.json")
+        data = json.loads(_b64.b64decode(r["content"]).decode("utf-8"))
+        _DATA_CACHE.update(sha=r["sha"], data=data, ts=_time.time())
+        return data
+
+
+def data_write(data):
+    """写 data.json（带 sha 冲突重试）"""
+    with _DATA_LOCK:
+        for attempt in range(4):
+            if _DATA_CACHE["sha"] is None:
+                data_read(force=True)
+            body = {"message": "update user data",
+                    "content": _b64.b64encode(json.dumps(data, ensure_ascii=False).encode()).decode(),
+                    "sha": _DATA_CACHE["sha"]}
+            try:
+                r = _gh(f"/repos/{DATA_REPO}/contents/data.json", method="PUT", body=body)
+                _DATA_CACHE.update(sha=r["content"]["sha"], data=data, ts=_time.time())
+                return
+            except Exception:
+                if attempt == 3:
+                    raise
+                data_read(force=True)
+
+
+def data_config():
+    return (data_read().get("config") or {})
+
+
+def _find_user(name):
+    return (data_read().get("users") or {}).get(name)
+
+
 BILI_RE = re.compile(r"bilibili\.com|b23\.tv", re.I)
 XHS_RE = re.compile(r"xiaohongshu\.com|xhslink\.com", re.I)
 BLOCK_RE = re.compile(r"bilibili\.com|b23\.tv|xiaohongshu\.com|xhslink\.com|douyin\.com|kuaishou\.com", re.I)
@@ -89,6 +156,189 @@ def _friendly(text, lang="zh"):
     base = _e("解析失败：网络异常或链接不受支持",
               "Parse failed: network error or unsupported URL", lang)
     return (base + NLCH2 + t[-200:]) if t else base
+
+# ---------------- Auth / Users (cloud edition) ----------------
+
+def _lang():
+    return "en" if (request.headers.get("X-UI-Lang") or "").lower().startswith("en") else "zh"
+
+
+def _cfg_get(key, default):
+    return data_config().get(key, default)
+
+
+def _users():
+    return data_read().get("users") or {}
+
+
+def _save_user(name, profile):
+    d = data_read()
+    d.setdefault("users", {})[name] = profile
+    data_write(d)
+
+
+@app.post("/api/auth/register")
+def auth_register():
+    d = request.get_json(silent=True) or {}
+    name = (d.get("username") or "").strip()
+    pwd = d.get("password") or ""
+    if not (3 <= len(name) <= 20):
+        return jsonify(error=_e("Username must be 3-20 characters", "Username must be 3-20 characters", _lang())), 400
+    if len(pwd) < 6:
+        return jsonify(error=_e("Password must be at least 6 characters", "Password must be at least 6 characters", _lang())), 400
+    if name in _users():
+        return jsonify(error=_e("Username already taken", "Username already taken", _lang())), 409
+    _save_user(name, {"pass_hash": generate_password_hash(pwd), "paid": False,
+                      "created": int(_time.time()), "provider": "local"})
+    session["uid"] = name
+    return jsonify(ok=True, user={"name": name, "paid": False})
+
+
+@app.post("/api/auth/login")
+def auth_login():
+    d = request.get_json(silent=True) or {}
+    name = (d.get("username") or "").strip()
+    pwd = d.get("password") or ""
+    prof = _find_user(name)
+    if not prof or not check_password_hash(prof.get("pass_hash", ""), pwd):
+        return jsonify(error=_e("Wrong username or password", "Wrong username or password", _lang())), 401
+    session["uid"] = name
+    return jsonify(ok=True, user={"name": name, "paid": bool(prof.get("paid"))})
+
+
+@app.post("/api/auth/logout")
+def auth_logout():
+    session.pop("uid", None)
+    return jsonify(ok=True)
+
+
+@app.get("/api/me")
+def api_me():
+    uid = session.get("uid")
+    prof = _find_user(uid) if uid else None
+    if uid and not prof:
+        session.pop("uid", None)
+        uid = None
+    gh_ready = bool((data_config().get("github") or {}).get("client_id"))
+    return jsonify(
+        user=({"name": uid, "paid": bool(prof.get("paid"))} if prof else None),
+        paid_required=bool(_cfg_get("paid_required", False)),
+        oauth=(["github"] if gh_ready else []))
+
+
+@app.get("/oauth/github/login")
+def gh_oauth_login():
+    cfg = data_config().get("github") or {}
+    cid = cfg.get("client_id") or ""
+    if not cid:
+        return jsonify(error="GitHub login is not configured yet"), 501
+    state = _secrets.token_hex(16)
+    session["gh_state"] = state
+    host = request.host_url.rstrip("/")
+    q = _b64.urlencode({"client_id": cid, "redirect_uri": host + "/oauth/github/callback",
+                        "scope": "read:user user:email", "state": state})
+    return redirect("https://github.com/login/oauth/authorize?" + q)
+
+
+@app.route("/oauth/github/callback")
+def gh_oauth_callback():
+    code = request.args.get("code")
+    state = request.args.get("state", "")
+    cfg = data_config().get("github") or {}
+    if not code or state != session.get("gh_state", "") or not cfg.get("client_id"):
+        return redirect("/?oauth=err")
+    session.pop("gh_state", None)
+    try:
+        body = _b64.urlencode({"client_id": cfg["client_id"],
+                               "client_secret": cfg.get("client_secret", ""),
+                               "code": code}).encode()
+        req = urllib.request.Request("https://github.com/login/oauth/access_token",
+                                     data=body, method="POST",
+                                     headers={"Accept": "application/json",
+                                              "User-Agent": "video-downloader"})
+        tok = json.loads(urllib.request.urlopen(req, timeout=30).read()).get("access_token") or ""
+        if not tok:
+            return redirect("/?oauth=err")
+        h = {"Authorization": "Bearer " + tok, "Accept": "application/json",
+             "User-Agent": "video-downloader"}
+        uinfo = json.loads(urllib.request.urlopen(
+            urllib.request.Request("https://api.github.com/user", headers=h), timeout=30).read())
+        email = uinfo.get("email") or ""
+        if not email:
+            emails = json.loads(urllib.request.urlopen(
+                urllib.request.Request("https://api.github.com/user/emails", headers=h),
+                timeout=30).read())
+            email = next((x["email"] for x in emails if x.get("primary")), "")
+        email = email or (uinfo.get("login") or "")
+        if not email:
+            return redirect("/?oauth=err")
+        if not _find_user(email):
+            _save_user(email, {"pass_hash": generate_password_hash(_secrets.token_hex(16)),
+                               "paid": False, "created": int(_time.time()),
+                               "provider": "github", "email": email})
+        session["uid"] = email
+        return redirect("/?oauth=ok")
+    except Exception:
+        return redirect("/?oauth=err")
+
+
+# ---------------- GitHub one-click setup (App Manifest) ----------------
+
+@app.get("/oauth/github/setup")
+def gh_setup():
+    host = request.host_url.rstrip("/")
+    manifest = {
+        "name": "Video Downloader Login",
+        "url": host + "/",
+        "hook_attributes": {"url": host + "/oauth/github/hook", "active": False},
+        "redirect_url": host + "/oauth/github/setup/callback",
+        "callback_urls": sorted({host + "/oauth/github/callback"}),
+        "setup_url": host + "/",
+        "public": True,
+        "request_oauth_user_on_install": True,
+        "default_permissions": {},
+    }
+    mjson = json.dumps(manifest, separators=(",", ":"))
+    html = (
+        '<!doctype html><meta charset="utf-8"><title>Redirecting to GitHub...</title>'
+        '<body style="font-family:sans-serif;background:#0d1117;color:#e6edf3;'
+        'display:grid;place-items:center;height:100vh"><div style="text-align:center">'
+        '<p style="font-size:16px">Redirecting to GitHub...</p>'
+        '<p style="color:#8b949e;font-size:13px">Click the green "Create GitHub App" button, '
+        'you will be returned here automatically.</p></div>'
+        '<form id="f" method="post" action="https://github.com/settings/apps/new">'
+        '<input type="hidden" name="manifest" value="'
+        + _b64.b64encode(mjson.encode()).decode() + '"></form>'
+        '<script>document.getElementById("f").submit()</script></body>')
+    return Response(html, mimetype="text/html")
+
+
+@app.route("/oauth/github/setup/callback")
+def gh_setup_callback():
+    code = request.args.get("code")
+    if not code:
+        return redirect("/?oauth=err")
+    req = urllib.request.Request(
+        "https://api.github.com/app-manifests/" + code + "/conversions",
+        data=b"{}", method="POST",
+        headers={"Accept": "application/json", "User-Agent": "video-downloader"})
+    try:
+        appinfo = json.loads(urllib.request.urlopen(req, timeout=30).read())
+    except Exception:
+        return redirect("/?oauth=err")
+    cid = appinfo.get("client_id") or ""
+    csec = appinfo.get("client_secret") or ""
+    if not (cid and csec):
+        return redirect("/?oauth=err")
+    d = data_read()
+    c = d.setdefault("config", {})
+    gh = c.get("github") if isinstance(c.get("github"), dict) else {}
+    gh = gh or {}
+    gh.update({"client_id": cid, "client_secret": csec})
+    c["github"] = gh
+    data_write(d)
+    return redirect("/?oauth=ghsetup")
+
 
 @app.post("/api/parse")
 def api_parse():

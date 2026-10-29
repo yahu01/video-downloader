@@ -62,6 +62,31 @@ header{display:flex;align-items:center;gap:14px;padding:20px 0 6px}
 .pl-row .t{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pl-row .idx{color:var(--muted);font-size:12px;width:22px;text-align:right}
 .pl-list{max-height:400px;overflow:auto}
+.atab{flex:1;background:none;border:none;color:var(--muted);font-size:16px;font-weight:600;
+  padding:10px 0;cursor:pointer;border-bottom:2px solid transparent}
+.atab.on{color:var(--text);border-bottom-color:var(--accent)}
+.fld{display:block;font-size:12.5px;color:var(--muted);margin:12px 0 6px}
+.modal input{width:100%;background:var(--panel);border:1px solid var(--border);border-radius:10px;
+  padding:11px 13px;color:var(--text);font-size:14px;outline:none}
+.modal input:focus{border-color:rgba(109,94,252,.6)}
+.autherr{font-size:12.5px;color:var(--err);background:rgba(248,113,113,.08);
+  border:1px solid rgba(248,113,113,.25);border-radius:9px;padding:8px 10px;margin-top:12px}
+.divider{display:flex;align-items:center;gap:12px;margin:18px 0 12px;color:var(--muted);font-size:12px}
+.divider::before,.divider::after{content:"";flex:1;height:1px;background:var(--border)}
+.social{display:flex;justify-content:center;gap:16px}
+.soc{width:44px;height:44px;border-radius:50%;display:grid;place-items:center;
+  background:rgba(255,255,255,.06);border:1px solid var(--border);transition:.15s}
+.soc:hover{background:rgba(255,255,255,.12);transform:translateY(-2px)}
+.agree{font-size:11.5px;color:var(--muted);text-align:center;margin-top:14px}
+.chip{font-size:12px;color:var(--muted);border:1px solid var(--border);padding:5px 10px;border-radius:99px}
+.chip b{color:var(--text)}
+.icon-btn{border:1px solid var(--border);background:var(--panel);color:var(--text);border-radius:99px;
+  padding:5px 12px;cursor:pointer;font-size:12px}
+#toasts{position:fixed;top:16px;left:50%;transform:translateX(-50%);z-index:99;display:flex;flex-direction:column;gap:8px;align-items:center}
+.toast{background:#161c2b;border:1px solid var(--border);border-radius:12px;padding:11px 18px;font-size:13.5px;max-width:90vw}
+.mask{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:50;display:none;place-items:center}
+.mask.show{display:grid}
+.modal{background:#12171f;border:1px solid var(--border);border-radius:18px;padding:22px}
 .empty{color:var(--muted);font-size:13px;text-align:center;padding:18px 0}
 .err-box{font-size:12.5px;color:var(--err);background:rgba(248,113,113,.08);border:1px solid rgba(248,113,113,.25);
   border-radius:9px;padding:9px 11px;margin-top:10px;white-space:pre-wrap;word-break:break-all}
@@ -87,6 +112,7 @@ textarea{width:100%;background:var(--panel);border:1px solid var(--border);borde
     <div class="logo">📥</div>
     <div class="brand"><span data-i18n="brand">万能视频下载站</span><small>INTERNATIONAL · CLOUD EDITION</small></div>
     <div class="chips">
+      <span id="userChip" style="display:flex;gap:8px;align-items:center"></span>
       <div class="langseg"><button id="langZh">中</button><button id="langEn">EN</button></div>
     </div>
   </header>
@@ -101,6 +127,30 @@ textarea{width:100%;background:var(--panel);border:1px solid var(--border);borde
   </div>
 
   <div id="resultArea"></div>
+
+  <!-- auth modal -->
+  <div class="mask" id="authMask" style="display:none">
+    <div class="modal" style="width:min(380px,92vw)">
+      <div class="auth-tabs">
+        <button class="atab on" id="atabLogin">Sign in</button>
+        <button class="atab" id="atabReg">Sign up</button>
+      </div>
+      <label class="fld">Username</label>
+      <input id="authUser" autocomplete="username">
+      <label class="fld">Password</label>
+      <input id="authPass" type="password" autocomplete="current-password">
+      <div id="regExtra" style="display:none">
+        <label class="fld">Confirm password</label>
+        <input id="authPass2" type="password">
+      </div>
+      <div id="authErr" class="autherr" style="display:none"></div>
+      <button class="btn" id="btnSubmitAuth" style="width:100%;margin-top:14px">Sign in</button>
+      <div class="divider"><span>Or continue with</span></div>
+      <div class="social" id="oauthBtns"></div>
+      <p class="agree">By continuing you agree to the Terms of Service</p>
+    </div>
+  </div>
+  <div id="toasts"></div>
 
   <footer>
     <span data-i18n="foot1">下载由服务器实时转发给浏览器 · 单文件建议 ≤ 2GB</span><br>
@@ -179,6 +229,95 @@ async function api(path, body){
   const j = await r.json().catch(()=>({}));
   if(!r.ok) throw new Error(j.error || (t("reqFail") + r.status));
   return j;
+}
+
+/* ---------- auth ---------- */
+let ME = null, AUTH_AFTER = null, AUTH_MODE = "login";
+
+async function refreshMe(){
+  try{ ME = await api("/api/me"); }catch{ ME = {user:null, oauth:[], paid_required:false}; }
+  renderUserChip();
+}
+function renderUserChip(){
+  const el = $("#userChip");
+  if(ME && ME.user){
+    el.innerHTML = '<span class="chip">👤 ' + esc(ME.user.name) +
+      (ME.user.paid ? ' <b style="color:var(--ok)">PRO</b>' : '') + '</span>' +
+      '<button class="icon-btn" id="btnLogout">' + esc(LANG==="zh" ? "退出" : "Sign out") + '</button>';
+    $("#btnLogout").onclick = async ()=>{ await api("/api/auth/logout", {}); ME.user = null; renderUserChip(); };
+  }else{
+    el.innerHTML = '<button class="icon-btn" id="btnLoginTop">' + esc(LANG==="zh" ? "登录 / 注册" : "Sign in") + '</button>';
+    $("#btnLoginTop").onclick = ()=>openAuth(null);
+  }
+}
+function openAuth(after){
+  AUTH_AFTER = after;
+  $("#authUser").value = ""; $("#authPass").value = ""; $("#authPass2").value = "";
+  setAuthMode("login"); renderOauthBtns();
+  $("#authMask").classList.add("show");
+  $("#authUser").focus();
+}
+function setAuthMode(m){
+  AUTH_MODE = m;
+  $("#atabLogin").classList.toggle("on", m==="login");
+  $("#atabReg").classList.toggle("on", m==="register");
+  $("#regExtra").style.display = m==="register" ? "block" : "none";
+  $("#btnSubmitAuth").textContent = m==="register" ? "Sign up" : "Sign in";
+  authErr("");
+}
+$("#atabLogin").onclick = ()=>setAuthMode("login");
+$("#atabReg").onclick = ()=>setAuthMode("register");
+$("#authMask").onclick = e => { if(e.target.id==="authMask") $("#authMask").classList.remove("show"); };
+function authErr(m){
+  const el = $("#authErr");
+  el.textContent = m || ""; el.style.display = m ? "block" : "none";
+}
+function renderOauthBtns(){
+  const el = $("#oauthBtns");
+  const provs = (ME && ME.oauth) || [];
+  const divider = el.previousElementSibling, agree = el.nextElementSibling;
+  if(!provs.length){
+    el.style.display = "none";
+    if(divider) divider.style.display = "none";
+    if(agree) agree.style.display = "none";
+    return;
+  }
+  el.style.display = "flex";
+  if(divider) divider.style.display = "flex";
+  if(agree) agree.style.display = "block";
+  const svgs = {
+    github: '<svg width="20" height="20" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>'
+  };
+  const names = {github:"GitHub"};
+  el.innerHTML = provs.map(p=>'<a class="soc" href="/oauth/' + esc(p) + '/login" title="' +
+    esc(names[p]||p) + '">' + (svgs[p] || esc(names[p]||p)) + '</a>').join("");
+}
+async function submitAuth(){
+  const name = $("#authUser").value.trim(), pwd = $("#authPass").value;
+  authErr("");
+  if(name.length < 3 || name.length > 20) return authErr("Username: 3-20 characters");
+  if(pwd.length < 6) return authErr("Password: at least 6 characters");
+  if(AUTH_MODE==="register" && $("#authPass2").value !== pwd) return authErr("Passwords do not match");
+  const btn = $("#btnSubmitAuth"); btn.disabled = true;
+  try{
+    const j = await api("/api/auth/" + AUTH_MODE, {username:name, password:pwd});
+    ME.user = j.user;
+    $("#authMask").classList.remove("show");
+    renderUserChip();
+    toast(AUTH_MODE==="register" ? "Account created ✓" : "Signed in ✓", "ok");
+    const cb = AUTH_AFTER; AUTH_AFTER = null;
+    if(cb) cb();
+  }catch(e){ authErr(e.message); }
+  btn.disabled = false;
+}
+$("#btnSubmitAuth").onclick = submitAuth;
+[$("#authPass"), $("#authPass2")].forEach(inp=>inp.addEventListener("keydown", e=>{
+  if(e.key==="Enter") submitAuth();
+}));
+
+function requireLogin(cb){
+  if(ME && ME.user){ cb(); return; }
+  openAuth(cb);
 }
 
 function toast(msg, type){
@@ -329,6 +468,7 @@ function renderPlaylist(p){
 }
 
 async function batch(urls){
+  if(!(ME && ME.user)){ openAuth(()=>batch(urls)); return; }   // 批量需登录
   $("#resultArea").innerHTML = `
     <div class="panel">
       <h2>${esc(t("plTitle"))} <span class="cnt">${urls.length}</span></h2>
@@ -361,6 +501,7 @@ async function batch(urls){
 
 $("#btnGo").onclick = ()=>parseUrl($("#urlInput").value);
 $("#urlInput").addEventListener("keydown", e=>{ if(e.key==="Enter") parseUrl($("#urlInput").value); });
+refreshMe();
 applyLang();
 </script>
 </body>

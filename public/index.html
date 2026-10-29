@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Video Downloader · 万能视频下载（国际版）</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%93%A5%3C/text%3E%3C/svg%3E">
+<meta name="description" content="Download videos from YouTube, TikTok, Twitter and 1000+ sites. Pick resolution, batch download. 支持上千站点视频解析下载。">
+<style>
+:root{--bg:#0a0e16;--panel:rgba(255,255,255,.045);--panel2:rgba(255,255,255,.07);
+  --border:rgba(255,255,255,.09);--text:#e7ecf5;--muted:#8b94a7;
+  --accent:#6d5efc;--accent2:#22d3ee;--ok:#34d399;--warn:#fbbf24;--err:#f87171;--radius:16px}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:var(--bg);color:var(--text);
+  font-family:system-ui,-apple-system,"Segoe UI","PingFang SC",sans-serif;min-height:100%}
+body{background-image:radial-gradient(900px 420px at 15% -10%,rgba(109,94,252,.18),transparent 60%),
+  radial-gradient(700px 380px at 90% 0%,rgba(34,211,238,.12),transparent 60%)}
+a{color:var(--accent2);text-decoration:none}
+.wrap{max-width:900px;margin:0 auto;padding:0 20px 60px}
+header{display:flex;align-items:center;gap:14px;padding:20px 0 6px}
+.logo{width:40px;height:40px;border-radius:12px;display:grid;place-items:center;font-size:20px;
+  background:linear-gradient(135deg,var(--accent),var(--accent2))}
+.brand{font-size:17px;font-weight:700}
+.brand small{display:block;font-size:10.5px;color:var(--muted);font-weight:400;letter-spacing:2px}
+.chips{margin-left:auto;display:flex;gap:8px}
+.langseg{display:flex;border:1px solid var(--border);border-radius:99px;overflow:hidden}
+.langseg button{border:none;background:var(--panel);color:var(--muted);padding:6px 12px;cursor:pointer;font-size:12px}
+.langseg button.on{background:rgba(109,94,252,.25);color:#fff}
+.hero{text-align:center;padding:40px 0 8px}
+.hero h1{font-size:28px;font-weight:800}
+.hero h1 span{background:linear-gradient(90deg,var(--accent),var(--accent2));
+  -webkit-background-clip:text;background-clip:text;color:transparent}
+.hero p{color:var(--muted);margin-top:10px;font-size:14px}
+.searchbar{display:flex;gap:10px;max-width:720px;margin:24px auto 0}
+.searchbar input{flex:1;background:var(--panel);border:1px solid var(--border);border-radius:14px;
+  padding:14px 18px;color:var(--text);font-size:15px;outline:none;min-width:0}
+.searchbar input:focus{border-color:rgba(109,94,252,.6)}
+.btn{border:none;border-radius:14px;padding:14px 24px;font-size:15px;font-weight:600;cursor:pointer;
+  color:#fff;background:linear-gradient(135deg,var(--accent),#8b5cf6);white-space:nowrap}
+.btn:disabled{opacity:.55;cursor:not-allowed}
+.btn.ghost{background:var(--panel);border:1px solid var(--border);color:var(--text);font-weight:500}
+.btn.small{padding:8px 14px;font-size:13px;border-radius:10px}
+.panel{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:18px;margin-top:22px}
+.panel h2{font-size:15px;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.cnt{font-size:11px;color:var(--muted);border:1px solid var(--border);border-radius:99px;padding:2px 8px}
+.vmeta{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0}
+.tag{font-size:12px;color:var(--muted);border:1px solid var(--border);border-radius:99px;padding:3px 10px}
+.tag b{color:var(--text);font-weight:500}
+.fmt-row{display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--border);
+  border-radius:12px;margin-bottom:8px;cursor:pointer;background:rgba(255,255,255,.02)}
+.fmt-row:hover{background:var(--panel2)}
+.fmt-row.on{border-color:rgba(109,94,252,.65);background:rgba(109,94,252,.12)}
+.fmt-row input{accent-color:var(--accent);width:16px;height:16px}
+.fmt-main{font-size:14px;font-weight:600}
+.badge{font-size:11px;padding:2px 8px;border-radius:6px;background:rgba(34,211,238,.15);color:var(--accent2)}
+.fmt-size{margin-left:auto;font-size:12.5px;color:var(--muted)}
+.dl-bar{margin-top:16px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.fmt-select{background:var(--panel);border:1px solid var(--border);border-radius:12px;
+  padding:11px 14px;color:var(--text);font-size:14px;outline:none;cursor:pointer}
+.pl-row{display:flex;align-items:center;gap:10px;padding:8px 8px;border-bottom:1px solid rgba(255,255,255,.05);font-size:13px}
+.pl-row input{accent-color:var(--accent)}
+.pl-row .t{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pl-row .idx{color:var(--muted);font-size:12px;width:22px;text-align:right}
+.pl-list{max-height:400px;overflow:auto}
+.empty{color:var(--muted);font-size:13px;text-align:center;padding:18px 0}
+.err-box{font-size:12.5px;color:var(--err);background:rgba(248,113,113,.08);border:1px solid rgba(248,113,113,.25);
+  border-radius:9px;padding:9px 11px;margin-top:10px;white-space:pre-wrap;word-break:break-all}
+.status{font-size:11px;padding:2px 9px;border-radius:99px}
+.st-ok{background:rgba(52,211,153,.16);color:var(--ok)}
+.st-run{background:rgba(109,94,252,.2);color:#a5b4fc}
+.st-err{background:rgba(248,113,113,.15);color:var(--err)}
+footer{margin-top:40px;color:var(--muted);font-size:12px;text-align:center;line-height:2}
+.flash{animation:flash 1.4s ease}
+@keyframes flash{0%{box-shadow:0 0 0 4px rgba(109,94,252,.75)}100%{box-shadow:0 0 0 0 rgba(109,94,252,0)}}
+.spin{display:inline-block;width:13px;height:13px;border:2px solid rgba(255,255,255,.3);
+  border-top-color:#fff;border-radius:50%;animation:rot .7s linear infinite;vertical-align:-2px}
+@keyframes rot{to{transform:rotate(360deg)}}
+#resultArea:empty{display:none}
+textarea{width:100%;background:var(--panel);border:1px solid var(--border);border-radius:14px;
+  padding:14px 16px;color:var(--text);font-size:13.5px;outline:none;resize:vertical;
+  font-family:inherit;line-height:1.9;min-height:120px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo">📥</div>
+    <div class="brand"><span data-i18n="brand">万能视频下载站</span><small>INTERNATIONAL · CLOUD EDITION</small></div>
+    <div class="chips">
+      <div class="langseg"><button id="langZh">中</button><button id="langEn">EN</button></div>
+    </div>
+  </header>
+
+  <div class="hero">
+    <h1><span data-i18n="hero1a">粘贴链接，</span><span data-i18n="hero1b">一键下载</span></h1>
+    <p data-i18n="heroP">YouTube · TikTok · Twitter/X · Instagram · Vimeo 等 1000+ 站点 · 分辨率任选 · 浏览器直接下载</p>
+    <div class="searchbar">
+      <input id="urlInput" data-i18n-ph="urlPh" placeholder="粘贴视频链接；多个链接可批量" autofocus>
+      <button class="btn" id="btnGo" data-i18n="parse">解析下载</button>
+    </div>
+  </div>
+
+  <div id="resultArea"></div>
+
+  <footer>
+    <span data-i18n="foot1">下载由服务器实时转发给浏览器 · 单文件建议 ≤ 2GB</span><br>
+    <span data-i18n="foot2">仅供个人学习交流，请尊重版权</span>
+  </footer>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+const I18N = {
+zh: {
+  title:"万能视频下载站 · 国际版", brand:"万能视频下载站", brandSub:"INTERNATIONAL · CLOUD EDITION",
+  hero1a:"粘贴链接，", hero1b:"一键下载",
+  heroP:"YouTube · TikTok · Twitter/X · Instagram · Vimeo 等 1000+ 站点 · 分辨率任选 · 浏览器直接下载",
+  urlPh:"粘贴视频链接；多个链接（空格分隔）将按最佳画质逐个下载",
+  parse:"解析下载", parsing:"解析中…",
+  needUrl:"请先粘贴视频链接",
+  parseOk:"解析成功，选择分辨率下载",
+  parseFail:"解析失败", dlStart:"开始下载（浏览器下载栏可见进度）",
+  recommended:"推荐", videoSec:"视频（含画面）", audioSec:"纯音频",
+  optBest:"⭐ 最佳（推荐）", optAudio:"🎵 纯音频",
+  resolution:"分辨率", dlSel:"⬇ 下载所选", willDl:"将下载：", unknownSize:"大小未知",
+  site:"站点", author:"作者", duration:"时长", fmtsN:n=>`共 <b>${n}</b> 种格式`,
+  audio:"音频", unknown:"未知", withAudio:" + 音频", audioBest:"最佳音频",
+  bestMerged:"最佳画质（自动合并音视频）",
+  plTitle:"批量队列", batchDone:(q,f)=>`批量完成：成功 ${q}，失败 ${f}`,
+  bOk:"✅ 已开始", bRun:"⏳ 下载中…", bErr:"❌ 失败",
+  foot1:"下载由服务器实时转发给浏览器 · 单文件建议 ≤ 2GB",
+  foot2:"仅供个人学习交流，请尊重版权",
+  reqFail:"请求失败 ",
+},
+en: {
+  title:"Video Downloader · International", brand:"Video Downloader", brandSub:"INTERNATIONAL · CLOUD EDITION",
+  hero1a:"Paste a link, ", hero1b:"download instantly",
+  heroP:"YouTube · TikTok · Twitter/X · Instagram · Vimeo and 1000+ sites · pick resolution · saves straight to your browser",
+  urlPh:"Paste a video link; multiple links (space separated) download at best quality",
+  parse:"Download", parsing:"Parsing…",
+  needUrl:"Paste a video link first",
+  parseOk:"Parsed. Pick a resolution to download",
+  parseFail:"Parse failed", dlStart:"Download started (see your browser downloads)",
+  recommended:"Recommended", videoSec:"Video", audioSec:"Audio only",
+  optBest:"⭐ Best (recommended)", optAudio:"🎵 Audio only",
+  resolution:"Resolution", dlSel:"⬇ Download", willDl:"Will download: ", unknownSize:"size unknown",
+  site:"Site", author:"Author", duration:"Duration", fmtsN:n=>`<b>${n}</b> formats`,
+  audio:"audio", unknown:"unknown", withAudio:" + audio", audioBest:"Best audio",
+  bestMerged:"Best quality (video+audio merged)",
+  plTitle:"Batch queue", batchDone:(q,f)=>`Batch done: ${q} ok, ${f} failed`,
+  bOk:"✅ started", bRun:"⏳ downloading…", bErr:"❌ failed",
+  foot1:"Streamed through the server straight to your browser · single file ≤ 2GB recommended",
+  foot2:"For personal study only. Please respect copyright.",
+  reqFail:"Request failed ",
+}};
+
+let LANG = localStorage.getItem("ui_lang") ||
+  (navigator.language && navigator.language.toLowerCase().startsWith("zh") ? "zh" : "en");
+function t(k){ const d = I18N[LANG] || I18N.zh; return d[k] !== undefined ? d[k] : (I18N.zh[k] !== undefined ? I18N.zh[k] : k); }
+
+function applyLang(){
+  document.title = t("title");
+  document.documentElement.lang = LANG === "zh" ? "zh-CN" : "en";
+  document.querySelectorAll("[data-i18n]").forEach(el => el.textContent = t(el.dataset.i18n));
+  document.querySelectorAll("[data-i18n-ph]").forEach(el => el.placeholder = t(el.dataset.i18nPh));
+  $("#langZh").classList.toggle("on", LANG === "zh");
+  $("#langEn").classList.toggle("on", LANG === "en");
+  if(LAST) render(LAST);
+}
+$("#langZh").onclick = ()=>{ LANG="zh"; localStorage.setItem("ui_lang","zh"); applyLang(); };
+$("#langEn").onclick = ()=>{ LANG="en"; localStorage.setItem("ui_lang","en"); applyLang(); };
+
+async function api(path, body){
+  const h = {"X-UI-Lang": LANG};
+  if(body){ h["Content-Type"] = "application/json"; }
+  const r = await fetch(path, body ? {method:"POST", headers:h, body:JSON.stringify(body)} : {headers:h});
+  const j = await r.json().catch(()=>({}));
+  if(!r.ok) throw new Error(j.error || (t("reqFail") + r.status));
+  return j;
+}
+
+function toast(msg, type){
+  const d = document.createElement("div");
+  d.className = "toast"; d.style.cssText = "position:fixed;top:16px;left:50%;transform:translateX(-50%);" +
+    "background:#161c2b;border:1px solid " + (type==="err" ? "rgba(248,113,113,.45)" : "rgba(52,211,153,.4)") +
+    ";border-radius:12px;padding:11px 18px;font-size:13.5px;z-index:99;max-width:90vw";
+  d.textContent = msg; document.body.appendChild(d);
+  setTimeout(()=>d.remove(), 4500);
+}
+
+const fmtBytes = b => b==null ? "—" : b>=1073741824 ? (b/1073741824).toFixed(2)+" GB"
+  : b>=1048576 ? (b/1048576).toFixed(1)+" MB" : b>=1024 ? (b/1024).toFixed(0)+" KB" : b+" B";
+const fmtDur = s => { if(s==null) return "—"; s = Math.round(s);
+  const h=~~(s/3600), m=~~(s%3600/60), ss=s%60;
+  return h?`${h}:${String(m).padStart(2,'0')}:${String(ss).padStart(2,'0')}`:`${m}:${String(ss).padStart(2,'0')}`; };
+const shortCodec = c => !c||c==="none" ? "" : String(c).split(".")[0];
+
+let LAST = null;
+
+function parseUrl(url){
+  const urls = [...new Set((url.match(/https?:\/\/[^\s,，;；'"<>]+/gi) || []).map(x=>x.trim()))];
+  if(!urls.length) return toast(t("needUrl"), "err");
+  if(urls.length === 1) return parseOne(urls[0]);
+  return batch(urls);
+}
+
+async function parseOne(url){
+  const btn = $("#btnGo");
+  btn.disabled = true; btn.innerHTML = '<span class="spin"></span> ' + t("parsing");
+  $("#resultArea").innerHTML = ""; LAST = null;
+  try{
+    const j = await api("/api/parse", {url});
+    if(j.type === "playlist"){ renderPlaylist(j); }
+    else { LAST = j; renderVideo(j); toast(t("parseOk"), "ok"); }
+  }catch(e){
+    $("#resultArea").innerHTML = `<div class="panel"><div class="err-box">❌ ${esc(t("parseFail"))}：${esc(e.message)}</div></div>`;
+  }finally{
+    btn.disabled = false; btn.textContent = t("parse");
+    $("#resultArea").scrollIntoView({behavior:"smooth", block:"start"});
+  }
+}
+
+function render(v){
+  const vids = v.formats.filter(f=>f.vcodec);
+  const auds = v.formats.filter(f=>!f.vcodec);
+  const bestId = "b";
+  const row = f => `
+    <label class="fmt-row${f._on?" on":""}">
+      <input type="radio" name="fmt" value="${esc(f.format_id)}" data-label="${esc(fmtLabel(f))}" ${f._on?"checked":""}>
+      <span class="fmt-main">${esc(fmtLabel(f))}</span>
+      <span class="badge">${esc(f.ext||"?")}</span>
+      <span class="fmt-size">${f.filesize?fmtBytes(f.filesize):t("unknownSize")}</span>
+    </label>`;
+  const byHeight = {};
+  vids.forEach(f=>{ const h=f.height||0;
+    if(h && (!byHeight[h] || (f.tbr||0)>(byHeight[h].tbr||0))) byHeight[h]=f; });
+  const hs = Object.keys(byHeight).map(Number).sort((a,b)=>b-a);
+  $("#resultArea").innerHTML = `
+    <div class="panel">
+      <h3 style="font-size:16px;word-break:break-all">${esc(v.title)}</h3>
+      <div class="vmeta">
+        <span class="tag">${esc(t("site"))} <b>${esc(v.extractor)}</b></span>
+        ${v.uploader?`<span class="tag">${esc(t("author"))} <b>${esc(v.uploader)}</b></span>`:""}
+        <span class="tag">${esc(t("duration"))} <b>${fmtDur(v.duration)}</b></span>
+        <span class="tag">${t("fmtsN")(v.formats.length)}</span>
+      </div>
+      <div style="margin-top:10px">
+        <div style="font-size:12.5px;color:var(--muted);margin-bottom:8px">★ ${esc(t("recommended"))}</div>
+        ${row({format_id:bestId, ext:"", filesize:null, _on:true, label:t("bestMerged"), height:null})}
+      </div>
+      ${vids.length?`<div style="margin-top:12px"><div style="font-size:12.5px;color:var(--muted);margin-bottom:8px">${esc(t("videoSec"))}</div>
+        ${vids.map(f=>row({...f,_on:false})).join("")}</div>`:""}
+      ${auds.length?`<div style="margin-top:12px"><div style="font-size:12.5px;color:var(--muted);margin-bottom:8px">${esc(t("audioSec"))}</div>
+        ${auds.map(f=>row({...f,_on:false})).join("")}</div>`:""}
+      <div class="dl-bar">
+        <label style="font-size:13px;color:var(--muted)">${esc(t("resolution"))}</label>
+        <select class="fmt-select" id="fmtSelect">
+          <option value="b">${t("optBest")}</option>
+          ${hs.map(h=>`<option value="${esc(byHeight[h].format_id)}">${h}p</option>`).join("")}
+          ${auds.length?`<option value="ba">${t("optAudio")}</option>`:""}
+        </select>
+        <button class="btn" id="btnDl">⬇ ${esc(t("dlSel"))}</button>
+        <span style="color:var(--muted);font-size:12.5px" id="dlPick"></span>
+      </div>
+    </div>`;
+  const sel = document.getElementById("fmtSelect");
+  sel.onchange = ()=>{ const r = [...document.querySelectorAll('input[name=fmt]')].find(x=>x.value===sel.value);
+    if(r){ r.checked = true; r.dispatchEvent(new Event("change")); } };
+  const upd = ()=>{ const el = $('input[name=fmt]:checked'); if(!el) return;
+    document.querySelectorAll('input[name=fmt]').forEach(r=>r.closest(".fmt-row").classList.toggle("on", r.checked));
+    $("#dlPick").textContent = t("willDl") + el.dataset.label;
+    if([...sel.options].some(o=>o.value===el.value)) sel.value = el.value; };
+  document.querySelectorAll('input[name=fmt]').forEach(r=>r.addEventListener("change", upd));
+  upd();
+  $("#resultArea .panel").classList.add("flash");
+  $("#btnDl").onclick = ()=>{ location.href = streamUrl(v.webpage_url || $("#urlInput").value, sel.value, v.title); };
+}
+
+function fmtLabel(f){
+  if(f.label) return f.label;
+  if(!f.vcodec) return `${f.tbr?Math.round(f.tbr)+"kbps ":""}${t("audio")}`;
+  let s = f.height ? f.height+"p" : (f.resolution||t("unknown"));
+  if(f.fps && f.fps>31) s += ` ${Math.round(f.fps)}fps`;
+  return s;
+}
+function streamUrl(url, fmt, title){
+  return `/api/download?url=${encodeURIComponent(url)}&format=${encodeURIComponent(fmt)}&name=${encodeURIComponent((title||"video").slice(0,70))}`;
+}
+
+function renderPlaylist(p){
+  $("#resultArea").innerHTML = `
+    <div class="panel">
+      <h2>${esc(p.title)} <span class="cnt">${p.count}</span>
+        <button class="btn small" id="plAll" style="margin-left:auto">${esc(t("dlSel"))} ×${Math.min(p.count, 20)}</button>
+      </h2>
+      <div class="pl-list">
+        ${p.entries.slice(0,50).map((e,i)=>`
+          <div class="pl-row">
+            <span class="idx">${i+1}</span>
+            <span class="t" title="${esc(e.title)}">${esc(e.title)}</span>
+            <span class="status st-run" id="pl-${i}">·</span>
+          </div>`).join("")}
+      </div>
+      <div style="font-size:12px;color:var(--muted);margin-top:8px">${esc(t("batchNote")||"按最佳画质逐条开始浏览器下载")}</div>
+    </div>`;
+  $("#plAll").onclick = async ()=>{
+    const items = p.entries.slice(0, 20);
+    let q = 0, f = 0;
+    for(let i=0; i<items.length; i++){
+      const st = document.getElementById("pl-"+i);
+      if(st) st.className = "status st-run", st.textContent = "⏳";
+      try{
+        const r = await fetch(streamUrl(items[i].url, "b", items[i].title), {headers:{"X-UI-Lang":LANG}});
+        if(!r.ok) throw new Error(r.status);
+        const blob = await r.blob();
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = (items[i].title || ("video"+i)).slice(0,70) + ".mp4";
+        a.click(); URL.revokeObjectURL(a.href);
+        q++; if(st){ st.className="status st-ok"; st.textContent = "✅"; }
+      }catch(e){
+        f++; if(st){ st.className="status st-err"; st.textContent = "❌"; }
+      }
+    }
+    toast(t("batchDone")(q, f), f?"err":"ok");
+  };
+}
+
+async function batch(urls){
+  $("#resultArea").innerHTML = `
+    <div class="panel">
+      <h2>${esc(t("plTitle"))} <span class="cnt">${urls.length}</span></h2>
+      <div class="pl-list">
+        ${urls.map((u,i)=>`<div class="pl-row"><span class="idx">${i+1}</span>
+          <span class="t">${esc(u)}</span><span class="status st-run" id="pl-${i}">·</span></div>`).join("")}
+      </div>
+    </div>`;
+  $("#resultArea").scrollIntoView({behavior:"smooth"});
+  let q = 0, f = 0;
+  for(let i=0; i<urls.length; i++){
+    const st = document.getElementById("pl-"+i);
+    try{
+      const j = await api("/api/parse", {url:urls[i]});
+      if(j.type === "video"){
+        if(st) st.className = "status st-run", st.textContent = "⏳";
+        const r = await fetch(streamUrl(j.webpage_url || urls[i], "b", j.title), {headers:{"X-UI-Lang":LANG}});
+        if(!r.ok) throw new Error(r.status);
+        const blob = await r.blob();
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = (j.title || ("video"+i)).slice(0,70) + ".mp4";
+        a.click(); URL.revokeObjectURL(a.href);
+        q++; if(st){ st.className="status st-ok"; st.textContent = "✅"; }
+      }else{ f++; if(st){ st.className="status st-err"; st.textContent = "❌"; } }
+    }catch(e){ f++; if(st){ st.className="status st-err"; st.textContent = "❌"; } }
+  }
+  toast(t("batchDone")(q, f), f?"err":"ok");
+}
+
+$("#btnGo").onclick = ()=>parseUrl($("#urlInput").value);
+$("#urlInput").addEventListener("keydown", e=>{ if(e.key==="Enter") parseUrl($("#urlInput").value); });
+applyLang();
+</script>
+</body>
+</html>

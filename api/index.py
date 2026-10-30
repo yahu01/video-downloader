@@ -122,7 +122,7 @@ def _find_user(name):
 
 BILI_RE = re.compile(r"bilibili\.com|b23\.tv", re.I)
 XHS_RE = re.compile(r"xiaohongshu\.com|xhslink\.com", re.I)
-BLOCK_RE = re.compile(r"bilibili\.com|b23\.tv|xiaohongshu\.com|xhslink\.com|douyin\.com|kuaishou\.com", re.I)
+BLOCK_RE = re.compile(r"xiaohongshu\.com|xhslink\.com|kuaishou\.com", re.I)   # 抖音/TikTok/B站 放行（云版支持抖音与TikTok；B站境外风控屏蔽）
 
 
 def _scrub(text):

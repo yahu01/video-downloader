@@ -153,6 +153,11 @@ def _friendly(text, lang="zh"):
                   "YouTube requires sign-in verification, try another video", lang)
     if "Private video" in t or "unavailable" in t.lower():
         return _e("视频不存在或为私有", "Video unavailable or private", lang)
+    if "IP address is blocked" in t or "blocked from accessing" in t:
+        return _e("该站点屏蔽了数据中心 IP（云部署无法解析），请换用其他站点或本地版",
+                  "This site blocks datacenter IPs (cloud edition can't parse it)", lang)
+    if "not available" in t.lower() and "tiktok" in t.lower():
+        return _e("TikTok 限制服务器访问该视频", "TikTok restricts server access to this video", lang)
     base = _e("解析失败：网络异常或链接不受支持",
               "Parse failed: network error or unsupported URL", lang)
     return (base + NLCH2 + t[-200:]) if t else base

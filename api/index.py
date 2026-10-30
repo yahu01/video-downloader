@@ -507,6 +507,9 @@ def api_parse():
                            extractor="TikTok/抖音", webpage_url=url,
                            thumbnail=tk.get("thumbnail") or "",
                            formats=fmts, direct=direct, has_ffmpeg=False)
+        return jsonify(error=_e(
+            "第三方解析失败：该视频可能受限或解析服务繁忙，请稍后再试（国内版可解析抖音）",
+            "Third-party resolve failed: video may be restricted or service busy. Retry later.", lang)), 502
 
     # proxy="" = 强制直连（绕开用户机器的系统代理，如 Clash）；需要代理时设环境变量 PROXY_URL
     opts = {"quiet": True, "no_warnings": True, "noplaylist": True, "skip_download": True,

@@ -219,11 +219,67 @@ def api_me():
     if uid and not prof:
         session.pop("uid", None)
         uid = None
-    gh_ready = bool((data_config().get("github") or {}).get("client_id"))
+    providers = []
+    if (data_config().get("github") or {}).get("client_id"):
+        providers.append("github")
+    if (data_config().get("google") or {}).get("client_id"):
+        providers.append("google")
     return jsonify(
         user=({"name": uid, "paid": bool(prof.get("paid"))} if prof else None),
         paid_required=bool(_cfg_get("paid_required", False)),
-        oauth=(["github"] if gh_ready else []))
+        oauth=providers)
+
+
+@app.get("/oauth/google/login")
+def google_oauth_login():
+    cfg = data_config().get("google") or {}
+    cid = cfg.get("client_id") or ""
+    if not cid:
+        return jsonify(error="Google login is not configured yet"), 501
+    state = _secrets.token_hex(16)
+    session["g_state"] = state
+    host = request.host_url.rstrip("/")
+    q = urllib.parse.urlencode({
+        "client_id": cid, "redirect_uri": host + "/oauth/google/callback",
+        "response_type": "code", "scope": "openid email profile", "state": state,
+    })
+    return redirect("https://accounts.google.com/o/oauth2/v2/auth?" + q)
+
+
+@app.route("/oauth/google/callback")
+def google_oauth_callback():
+    code = request.args.get("code")
+    state = request.args.get("state", "")
+    cfg = data_config().get("google") or {}
+    if not code or state != session.get("g_state", "") or not cfg.get("client_id"):
+        return redirect("/?oauth=err")
+    session.pop("g_state", None)
+    try:
+        body = urllib.parse.urlencode({
+            "client_id": cfg["client_id"], "client_secret": cfg.get("client_secret", ""),
+            "code": code, "grant_type": "authorization_code",
+            "redirect_uri": request.host_url.rstrip("/") + "/oauth/google/callback",
+        }).encode()
+        req = urllib.request.Request("https://oauth2.googleapis.com/token",
+                                     data=body, method="POST")
+        tok = json.loads(urllib.request.urlopen(req, timeout=30).read())
+        id_token = tok.get("id_token") or ""
+        if not id_token:
+            return redirect("/?oauth=err")
+        payload = id_token.split(".")[1]
+        payload += "=" * (-len(payload) % 4)
+        info = json.loads(_b64.urlsafe_b64decode(payload))
+        email = info.get("email") or ""
+        if not email:
+            return redirect("/?oauth=err")
+        if not _find_user(email):
+            _save_user(email, {"pass_hash": generate_password_hash(_secrets.token_hex(16)),
+                               "paid": False, "created": int(_time.time()),
+                               "provider": "google", "email": email})
+        session["uid"] = email
+        return redirect("/?oauth=ok")
+    except Exception:
+        return redirect("/?oauth=err")
 
 
 @app.get("/oauth/github/login")

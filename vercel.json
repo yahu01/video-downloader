@@ -16,6 +16,10 @@
       "dest": "api/index.py"
     },
     {
+      "src": "/oauth/(.*)",
+      "dest": "api/index.py"
+    },
+    {
       "src": "/favicon.ico",
       "dest": "api/index.py"
     },

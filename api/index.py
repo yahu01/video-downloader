@@ -122,7 +122,8 @@ def _find_user(name):
 
 BILI_RE = re.compile(r"bilibili\.com|b23\.tv", re.I)
 XHS_RE = re.compile(r"xiaohongshu\.com|xhslink\.com", re.I)
-BLOCK_RE = re.compile(r"xiaohongshu\.com|xhslink\.com|kuaishou\.com", re.I)   # 抖音/TikTok/B站 放行（云版支持抖音与TikTok；B站境外风控屏蔽）
+BLOCK_RE = re.compile(r"xiaohongshu\.com|xhslink\.com|kuaishou\.com", re.I)
+DOUYIN_RE = re.compile(r"douyin\.com|iesdouyin\.com", re.I)   # 抖音/TikTok/B站 放行（云版支持抖音与TikTok；B站境外风控屏蔽）
 
 
 def _scrub(text):
@@ -494,6 +495,30 @@ def _headers_str(h):
 
 
 
+def await_douyin_cookies(base, url):
+    """douyin 需要新鲜游客 cookie：访问一次 douyin.com 拿 set-cookie(__ac_nonce 等)，
+    写成 Netscape cookie 文件并追加 --cookies 参数。失败则原样返回（无 cookie 尝试）。"""
+    try:
+        import requests as _rq
+        s = _rq.Session()
+        s.headers.update({"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/125.0 Safari/537.36"})
+        s.get("https://www.douyin.com/", timeout=10)
+        cookies = s.cookies
+        if not cookies:
+            return base
+        cf = os.path.join(tempfile.gettempdir(), "douyin.cookies")
+        nl = chr(10)
+        with open(cf, "w", encoding="utf-8") as fh:
+            fh.write("# Netscape HTTP Cookie File" + nl)
+            exp = str(int(time.time()) + 86400)
+            for c in cookies:
+                fh.write("\t".join([c.domain, "TRUE", c.path,
+                          "FALSE" if not c.secure else "TRUE", exp, c.name, c.value or ""]) + nl)
+        return base + ["--cookies", cf]
+    except Exception:
+        return base
+
+
 def _pick_stream(meta, fmt):
     """从 dump-json 的 formats 里选流。
     返回 (url, headers, ext, kind)：kind=plain 单流直转 / merge 需 ffmpeg 合并"""
@@ -569,6 +594,8 @@ def _download_impl():
         base += ["--cookies", cf]
 
     # 第一步：dump-json 验证 + 元数据（直链在这里面）
+    if DOUYIN_RE.search(url):
+        base = await_douyin_cookies(base, url)
     probe = base + ["--dump-json", "--no-playlist", url]
     try:
         pr = subprocess.run(probe, capture_output=True, text=True, timeout=120)

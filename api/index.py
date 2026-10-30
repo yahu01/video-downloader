@@ -228,6 +228,16 @@ def api_me():
 
 @app.get("/oauth/github/login")
 def gh_oauth_login():
+    try:
+        return _gh_login_impl()
+    except Exception:
+        import traceback
+        tb = traceback.format_exc()[-800:]
+        print("GH LOGIN ERROR:", tb, flush=True)
+        return jsonify(error="GH LOGIN TRACEBACK: " + tb.replace(chr(10), " | ")), 500
+
+
+def _gh_login_impl():
     cfg = data_config().get("github") or {}
     cid = cfg.get("client_id") or ""
     if not cid:

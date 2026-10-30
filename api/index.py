@@ -23,6 +23,7 @@ PRICE = float(os.environ.get("PRICE", "9.9"))          # 预留（Vercel 版第�
 PRICE = round(PRICE, 2)
 
 _COOKIES_FILE = None
+_DOUYIN_CF = None
 
 
 def cookies_file():
@@ -427,6 +428,10 @@ def api_parse():
     # proxy="" = 强制直连（绕开用户机器的系统代理，如 Clash）；需要代理时设环境变量 PROXY_URL
     opts = {"quiet": True, "no_warnings": True, "noplaylist": True, "skip_download": True,
             "proxy": os.environ.get("PROXY_URL", "")}
+    if DOUYIN_RE.search(url):
+        cf = douyin_cookie_file()
+        if cf:
+            opts["cookiefile"] = cf
     try:
         with yt_dlp.YoutubeDL(opts) as y:
             info = y.extract_info(url, download=False)
@@ -495,28 +500,39 @@ def _headers_str(h):
 
 
 
-def await_douyin_cookies(base, url):
-    """douyin 需要新鲜游客 cookie：访问一次 douyin.com 拿 set-cookie(__ac_nonce 等)，
-    写成 Netscape cookie 文件并追加 --cookies 参数。失败则原样返回（无 cookie 尝试）。"""
+def douyin_cookie_file():
+    """生成 douyin 游客 cookie 文件（访问主页拿 __ac_nonce 等 set-cookie）。
+    返回文件路径；失败返回 None。结果缓存到实例级 _DOUYIN_CF。"""
+    global _DOUYIN_CF
+    if _DOUYIN_CF is not None:
+        return _DOUYIN_CF or None
     try:
         import requests as _rq
-        s = _rq.Session()
-        s.headers.update({"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/125.0 Safari/537.36"})
-        s.get("https://www.douyin.com/", timeout=10)
-        cookies = s.cookies
-        if not cookies:
-            return base
+        sess = _rq.Session()
+        sess.headers.update({"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/125.0 Safari/537.36"})
+        sess.get("https://www.douyin.com/", timeout=10)
+        jars = sess.cookies
+        if not jars:
+            _DOUYIN_CF = ""
+            return None
         cf = os.path.join(tempfile.gettempdir(), "douyin.cookies")
         nl = chr(10)
         with open(cf, "w", encoding="utf-8") as fh:
             fh.write("# Netscape HTTP Cookie File" + nl)
             exp = str(int(time.time()) + 86400)
-            for c in cookies:
+            for c in jars:
                 fh.write("\t".join([c.domain, "TRUE", c.path,
                           "FALSE" if not c.secure else "TRUE", exp, c.name, c.value or ""]) + nl)
-        return base + ["--cookies", cf]
+        _DOUYIN_CF = cf
+        return cf
     except Exception:
-        return base
+        _DOUYIN_CF = ""
+        return None
+
+
+def await_douyin_cookies(base, url):
+    cf = douyin_cookie_file()
+    return base + ["--cookies", cf] if cf else base
 
 
 def _pick_stream(meta, fmt):

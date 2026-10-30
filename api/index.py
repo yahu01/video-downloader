@@ -237,6 +237,68 @@ def api_me():
         oauth=providers)
 
 
+def _tikwm_resolve(url):
+    """tikwm.com 第三方解析：TikTok + Douyin（抖音）无水印直链。失败返回 None。"""
+    try:
+        req = urllib.request.Request(
+            "https://tikwm.com/api/?url=" + urllib.parse.quote(url, safe="") + "&hd=1",
+            headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/125.0"})
+        r = json.loads(urllib.request.urlopen(req, timeout=25).read())
+        if r.get("code") != 0 or not r.get("data"):
+            return None
+        d = r["data"]
+        direct = {}
+        if d.get("hdplay"):
+            direct["hd"] = d["hdplay"]
+        if d.get("play"):
+            direct.setdefault("hd", d["play"])
+            direct["sd"] = d["play"]
+        if d.get("wmplay"):
+            direct["wm"] = d["wmplay"]
+        if d.get("music"):
+            direct["mp3"] = d["music"]
+        if not direct:
+            return None
+        return {"title": d.get("title") or "", "direct": direct,
+                "thumbnail": d.get("origin_cover") or d.get("cover") or "",
+                "duration": d.get("duration")}
+    except Exception:
+        return None
+
+
+@app.get("/api/stream")
+def api_stream():
+    """第三方直链的代理流：服务端拉流转发给浏览器（带下载文件名）"""
+    u = (request.args.get("u") or "").strip()
+    name = (request.args.get("name") or "video").strip()[:80]
+    ext = (request.args.get("ext") or "mp4").strip()[:6]
+    if not u.startswith(("http://", "https://")):
+        return jsonify(error="invalid url"), 400
+    host = urllib.parse.urlparse(u).hostname or ""
+    if host in ("localhost", "127.0.0.1", "0.0.0.0", "169.254.169.254") or \
+       host.endswith(".internal") or re.match(r"^(10|192\.168|172\.(1[6-9]|2\d|3[01]))\.", host):
+        return jsonify(error="blocked"), 400
+    safe = re.sub(r'[\\/:*?"<>|]', "_", name)
+    import requests as _rq
+    try:
+        up = _rq.get(u, stream=True, timeout=(15, 300),
+                     headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/125.0"})
+        up.raise_for_status()
+    except Exception as ex:
+        return jsonify(error=f"fetch failed: {str(ex)[:120]}"), 502
+    ctype = up.headers.get("Content-Type") or ("audio/mpeg" if ext == "mp3" else "video/mp4")
+    def gen():
+        try:
+            for chunk in up.iter_content(65536):
+                if chunk:
+                    yield chunk
+        finally:
+            up.close()
+    return Response(stream_with_context_wrap(gen()), mimetype=ctype,
+                    headers={"Content-Disposition": f'attachment; filename="{safe}.{ext}"',
+                             "Cache-Control": "no-store"})
+
+
 @app.get("/oauth/google/login")
 def google_oauth_login():
     cfg = data_config().get("google") or {}
@@ -424,6 +486,27 @@ def api_parse():
         return jsonify(error=_e(
             "该国内站点在云部署版暂不支持（境外节点风控），请使用本地版",
             "Domestic sites are not supported in cloud edition", 400)), 400
+
+    # 抖音 / TikTok：优先 tikwm 第三方解析（无水印直链，绕开双平台风控）
+    if DOUYIN_RE.search(url) or re.search(r"tiktok\.com", url, re.I):
+        tk = _tikwm_resolve(url)
+        if tk:
+            direct = tk["direct"]
+            fmts = []
+            if direct.get("hd"):
+                fmts.append({"format_id": "hd", "ext": "mp4", "label": "无水印高清"})
+            if direct.get("sd") and direct.get("sd") != direct.get("hd"):
+                fmts.append({"format_id": "sd", "ext": "mp4", "label": "无水印标清"})
+            if direct.get("wm"):
+                fmts.append({"format_id": "wm", "ext": "mp4", "label": "带水印"})
+            if direct.get("mp3"):
+                fmts.append({"format_id": "mp3", "ext": "mp3", "label": "音频 MP3"})
+            return jsonify(type="video", thirdparty=True, id="",
+                           title=tk["title"] or "(video)",
+                           uploader="", duration=tk.get("duration"),
+                           extractor="TikTok/抖音", webpage_url=url,
+                           thumbnail=tk.get("thumbnail") or "",
+                           formats=fmts, direct=direct, has_ffmpeg=False)
 
     # proxy="" = 强制直连（绕开用户机器的系统代理，如 Clash）；需要代理时设环境变量 PROXY_URL
     opts = {"quiet": True, "no_warnings": True, "noplaylist": True, "skip_download": True,

@@ -353,6 +353,7 @@ async function parseOne(url){
   try{
     const j = await api("/api/parse", {url});
     if(j.type === "playlist"){ renderPlaylist(j); }
+    else if(j.thirdparty){ LAST = j; renderThirdparty(j); toast(t("parseOk"), "ok"); }
     else { LAST = j; renderVideo(j); toast(t("parseOk"), "ok"); }
   }catch(e){
     $("#resultArea").innerHTML = `<div class="panel"><div class="err-box">❌ ${esc(t("parseFail"))}：${esc(e.message)}</div></div>`;
@@ -360,6 +361,27 @@ async function parseOne(url){
     btn.disabled = false; btn.textContent = t("parse");
     $("#resultArea").scrollIntoView({behavior:"smooth", block:"start"});
   }
+}
+
+function renderThirdparty(v){
+  const d = v.direct || {};
+  const mk = (id, label, ext) => d[id] ? `<a class="btn small" style="text-decoration:none" href="/api/stream?u=${encodeURIComponent(d[id])}&name=${encodeURIComponent((v.title||"video").slice(0,70))}&ext=${ext}">${label}</a>` : "";
+  $("#resultArea").innerHTML = `
+    <div class="panel">
+      <h3 style="font-size:16px;word-break:break-all">${esc(v.title)}</h3>
+      <div class="vmeta">
+        <span class="tag">${esc(t("site"))} <b>${esc(v.extractor)}</b></span>
+        <span class="tag">${esc(t("duration"))} <b>${fmtDur(v.duration)}</b></span>
+        <span class="tag" style="color:var(--ok)">无水印直链</span>
+      </div>
+      ${v.thumbnail?`<div style="margin:12px 0"><img src="${esc(v.thumbnail)}" style="max-width:220px;border-radius:10px" referrerpolicy="no-referrer"></div>`:""}
+      <div class="dl-bar" style="margin-top:14px">
+        ${mk("hd", LANG==="zh"?"⬇ 下载无水印高清":"⬇ HD no-watermark", "mp4")}
+        ${mk("wm", LANG==="zh"?"⬇ 带水印":"⬇ Watermarked", "mp4")}
+        ${mk("mp3", LANG==="zh"?"🎵 音频 MP3":"🎵 Audio MP3", "mp3")}
+      </div>
+    </div>`;
+  $("#resultArea .panel").classList.add("flash");
 }
 
 function render(v){

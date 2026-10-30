@@ -245,7 +245,7 @@ def _gh_login_impl():
     state = _secrets.token_hex(16)
     session["gh_state"] = state
     host = request.host_url.rstrip("/")
-    q = _b64.urlencode({"client_id": cid, "redirect_uri": host + "/oauth/github/callback",
+    q = urllib.parse.urlencode({"client_id": cid, "redirect_uri": host + "/oauth/github/callback",
                         "scope": "read:user user:email", "state": state})
     return redirect("https://github.com/login/oauth/authorize?" + q)
 
@@ -259,7 +259,7 @@ def gh_oauth_callback():
         return redirect("/?oauth=err")
     session.pop("gh_state", None)
     try:
-        body = _b64.urlencode({"client_id": cfg["client_id"],
+        body = urllib.parse.urlencode({"client_id": cfg["client_id"],
                                "client_secret": cfg.get("client_secret", ""),
                                "code": code}).encode()
         req = urllib.request.Request("https://github.com/login/oauth/access_token",

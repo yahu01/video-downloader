@@ -549,7 +549,7 @@ def api_parse():
                                duration=int(v2.get("duration") or 0) // 1000,
                                extractor="抖音", webpage_url=url,
                                thumbnail=cover, formats=fmts2,
-                               direct={"play": (pa2.get("url_list") or [""])[0]},
+                               direct={"play": ((v2.get("play_addr") or {}).get("url_list") or [""])[0]},
                                has_ffmpeg=False)
         except Exception:
             pass

@@ -2,3 +2,4 @@ flask
 requests
 yt-dlp
 imageio-ffmpeg
+douyin-tiktok-scraper

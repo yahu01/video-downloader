@@ -507,9 +507,55 @@ def api_parse():
                            extractor="TikTok/抖音", webpage_url=url,
                            thumbnail=tk.get("thumbnail") or "",
                            formats=fmts, direct=direct, has_ffmpeg=False)
-        return jsonify(error=_e(
-            "第三方解析失败：该视频可能受限或解析服务繁忙，请稍后再试（国内版可解析抖音）",
-            "Third-party resolve failed: video may be restricted or service busy. Retry later.", lang)), 502
+            return jsonify(error=_e(
+                "第三方解析失败：该视频可能受限或解析服务繁忙，请稍后再试",
+                "Third-party resolve failed: video may be restricted or service busy. Retry later.", lang)), 502
+        # tikwm 失败（抖音场景常见）→ 回退公共 hybrid API 实例
+        try:
+            import requests as _rq2
+            sess2 = _rq2.Session()
+            sess2.headers.update({"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/125.0 Safari/537.36"})
+            res2 = sess2.get("https://lvhomeproxy2.dpdns.org/api/hybrid/video_data",
+                             params={"url": url, "minimal": False}, timeout=40)
+            d2 = res2.json()
+            if d2.get("code") == 2000 and d2.get("data"):
+                dd = d2["data"]
+                v2 = dd.get("video") or {}
+                brs = v2.get("bit_rate") or []
+                brs.sort(key=lambda x: x.get("bit_rate") or 0, reverse=True)
+                fmts2 = []
+                for b in brs[:6]:
+                    g = b.get("play_addr") or {}
+                    u2 = (g.get("url_list") or [""])[0]
+                    if u2:
+                        kbps = b.get("bit_rate") or 0
+                        fmts2.append({"format_id": "bit" + str(b.get("bit_rate")),
+                                      "ext": "mp4", "url": u2,
+                                      "label": str(kbps) + "kbps",
+                                      "filesize": b.get("data_size")})
+                mu = ""
+                try:
+                    mu = ((dd.get("music") or {}).get("play_url") or {}).get("url_list", [""])[0]
+                except Exception:
+                    pass
+                if mu:
+                    fmts2.append({"format_id": "mp3", "ext": "mp3", "url": mu,
+                                  "label": "音频 MP3", "filesize": None})
+                cover = ""
+                try:
+                    cover = str(((dd.get("video") or {}).get("cover") or {}).get("url_list", [""])[0])
+                except Exception:
+                    pass
+                return jsonify(type="video", thirdparty=True, id=dd.get("aweme_id") or "",
+                               title=dd.get("desc") or "(video)",
+                               uploader=str((dd.get("author") or {}).get("nickname") or ""),
+                               duration=int(v2.get("duration") or 0) // 1000,
+                               extractor="抖音", webpage_url=url,
+                               thumbnail=cover, formats=fmts2,
+                               direct={"play": (pa2.get("url_list") or [""])[0]},
+                               has_ffmpeg=False)
+        except Exception:
+            pass
 
     # proxy="" = 强制直连（绕开用户机器的系统代理，如 Clash）；需要代理时设环境变量 PROXY_URL
     opts = {"quiet": True, "no_warnings": True, "noplaylist": True, "skip_download": True,

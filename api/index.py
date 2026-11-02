@@ -507,9 +507,6 @@ def api_parse():
                            extractor="TikTok/抖音", webpage_url=url,
                            thumbnail=tk.get("thumbnail") or "",
                            formats=fmts, direct=direct, has_ffmpeg=False)
-            return jsonify(error=_e(
-                "第三方解析失败：该视频可能受限或解析服务繁忙，请稍后再试",
-                "Third-party resolve failed: video may be restricted or service busy. Retry later.", lang)), 502
         # tikwm 失败（抖音场景常见）→ 回退公共 hybrid API 实例
         try:
             import requests as _rq2

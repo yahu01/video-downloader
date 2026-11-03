@@ -366,6 +366,8 @@ async function parseOne(url){
 function renderThirdparty(v){
   const d = v.direct || {};
   const mk = (id, label, ext) => d[id] ? `<a class="btn small" style="text-decoration:none" href="/api/stream?u=${encodeURIComponent(d[id])}&name=${encodeURIComponent((v.title||"video").slice(0,70))}&ext=${ext}">${label}</a>` : "";
+  const bits = (v.formats||[]).filter(f=>/^bit\d+$/.test(f.format_id) && f.url);
+  const bitBtns = bits.map(f=>`<a class="btn small" style="text-decoration:none" href="/api/stream?u=${encodeURIComponent(f.url)}&name=${encodeURIComponent((v.title||"video").slice(0,70))}&ext=mp4">${esc(f.label||f.format_id)}</a>`).join(" ");
   $("#resultArea").innerHTML = `
     <div class="panel">
       <h3 style="font-size:16px;word-break:break-all">${esc(v.title)}</h3>
@@ -380,6 +382,7 @@ function renderThirdparty(v){
         ${mk("wm", LANG==="zh"?"⬇ 带水印":"⬇ Watermarked", "mp4")}
         ${mk("mp3", LANG==="zh"?"🎵 音频 MP3":"🎵 Audio MP3", "mp3")}
       </div>
+      ${bitBtns?`<div class="dl-bar" style="margin-top:10px"><span style="font-size:13px;color:var(--muted)">码率:</span> ${bitBtns}</div>`:""}
     </div>`;
   $("#resultArea .panel").classList.add("flash");
 }

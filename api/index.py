@@ -257,9 +257,14 @@ def _tikwm_resolve(url):
             direct["wm"] = d["wmplay"]
         if d.get("music"):
             direct["mp3"] = d["music"]
+        images = [img.get("url") for img in (d.get("images") or []) if img.get("url")]
+        if not direct and images:
+            return {"title": d.get("title") or "", "direct": {}, "images": images,
+                    "thumbnail": images[0], "duration": d.get("duration")}
         if not direct:
             return None
         return {"title": d.get("title") or "", "direct": direct,
+                "images": images,
                 "thumbnail": d.get("origin_cover") or d.get("cover") or "",
                 "duration": d.get("duration")}
     except Exception:
@@ -296,6 +301,43 @@ def api_stream():
             up.close()
     return Response(stream_with_context_wrap(gen()), mimetype=ctype,
                     headers={"Content-Disposition": f'attachment; filename="{safe}.{ext}"',
+                             "Cache-Control": "no-store"})
+
+
+@app.get("/api/zip")
+def api_zip():
+    """图集打包：多图服务端拉取 → 内存 ZIP → 浏览器下载"""
+    import io
+    import zipfile as _zipmod
+    import requests as _rq
+    urls = [u for u in request.args.getlist("u") if u.startswith(("http://", "https://"))]
+    name = re.sub(r'[\/:*?"<>|]', "_", (request.args.get("name") or "gallery").strip())[:70]
+    if not urls:
+        return jsonify(error="no urls"), 400
+    if len(urls) > 60:
+        return jsonify(error="too many images"), 400
+    buf = io.BytesIO()
+    ok_cnt = 0
+    with _zipmod.ZipFile(buf, "w", _zipmod.ZIP_DEFLATED) as zf:
+        for i, u in enumerate(urls):
+            try:
+                r = _rq.get(u, timeout=(15, 60),
+                            headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/125.0",
+                                     "Referer": "https://www.douyin.com/"})
+                r.raise_for_status()
+                ext = ".jpg"
+                ct = (r.headers.get("Content-Type") or "").lower()
+                if "png" in ct: ext = ".png"
+                elif "webp" in ct: ext = ".webp"
+                zf.writestr(f"{i+1:02d}{ext}", r.content)
+                ok_cnt += 1
+            except Exception:
+                continue
+    if ok_cnt == 0:
+        return jsonify(error="all images failed"), 502
+    buf.seek(0)
+    return Response(buf, mimetype="application/zip",
+                    headers={"Content-Disposition": f'attachment; filename="{name}.zip"',
                              "Cache-Control": "no-store"})
 
 
@@ -490,6 +532,13 @@ def api_parse():
     # 抖音 / TikTok：优先 tikwm 第三方解析（无水印直链，绕开双平台风控）
     if DOUYIN_RE.search(url) or re.search(r"tiktok\.com", url, re.I):
         tk = _tikwm_resolve(url)
+        if tk and tk.get("images") and not tk.get("direct"):
+            return jsonify(type="gallery", thirdparty=True, id="",
+                           title=tk.get("title") or "(图集)",
+                           uploader="", duration=None,
+                           extractor="抖音/TikTok 图集", webpage_url=url,
+                           thumbnail=tk["images"][0], images=tk["images"],
+                           formats=[], has_ffmpeg=False)
         if tk:
             direct = tk["direct"]
             fmts = []
@@ -543,14 +592,25 @@ def api_parse():
                     cover = str(((dd.get("video") or {}).get("cover") or {}).get("url_list", [""])[0])
                 except Exception:
                     pass
-                return jsonify(type="video", thirdparty=True, id=dd.get("aweme_id") or "",
-                               title=dd.get("desc") or "(video)",
-                               uploader=str((dd.get("author") or {}).get("nickname") or ""),
-                               duration=int(v2.get("duration") or 0) // 1000,
-                               extractor="抖音", webpage_url=url,
-                               thumbnail=cover, formats=fmts2,
-                               direct={"play": ((v2.get("play_addr") or {}).get("url_list") or [""])[0]},
-                               has_ffmpeg=False)
+                if fmts2:
+                    return jsonify(type="video", thirdparty=True, id=dd.get("aweme_id") or "",
+                                   title=dd.get("desc") or "(video)",
+                                   uploader=str((dd.get("author") or {}).get("nickname") or ""),
+                                   duration=int(v2.get("duration") or 0) // 1000,
+                                   extractor="抖音", webpage_url=url,
+                                   thumbnail=cover, formats=fmts2,
+                                   direct={"play": ((v2.get("play_addr") or {}).get("url_list") or [""])[0]},
+                                   has_ffmpeg=False)
+                # 无视频档位 → 尝试图集（data.images）
+                imgs = [i.get("url") for i in (dd.get("images") or []) if i.get("url")]
+                if imgs:
+                    return jsonify(type="gallery", thirdparty=True, id=dd.get("aweme_id") or "",
+                                   title=dd.get("desc") or "(图集)",
+                                   uploader=str((dd.get("author") or {}).get("nickname") or ""),
+                                   duration=None,
+                                   extractor="抖音图集", webpage_url=url,
+                                   thumbnail=imgs[0], images=imgs,
+                                   formats=[], has_ffmpeg=False)
         except Exception:
             pass
 

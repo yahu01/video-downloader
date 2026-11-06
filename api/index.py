@@ -253,8 +253,42 @@ def _rq_get_img(url):
 
 def _tikwm_resolve(url):
     """tikwm.com 第三方解析：TikTok + Douyin（抖音）无水印直链。
-    免费接口限 1 req/s 且机房 IP 易撞限流：重试 3 次 + 镜像域名兜底；失败返回 None。"""
+    优先走 Cloudflare Worker 中转（机房 IP 被 tikwm 风控）；失败再直连重试 + 镜像域名。"""
     import time as _t2
+
+    # 1) Cloudflare Worker 中转（CF 出口不受 tikwm 机房 IP 风控）
+    try:
+        req = urllib.request.Request(
+            "https://vd-resolver.jiangpack2026.workers.dev/resolve?k=vd-resolver-2026&u="
+            + urllib.parse.quote(url, safe=""),
+            headers={"User-Agent": "video-downloader", "Accept": "application/json"})
+        r0 = json.loads(urllib.request.urlopen(req, timeout=35).read())
+        if r0.get("code") == 0 and r0.get("data"):
+            r = r0
+            d = r["data"]
+            direct = {}
+            if d.get("hdplay"):
+                direct["hd"] = d["hdplay"]
+            if d.get("play"):
+                direct.setdefault("hd", d["play"])
+                direct["sd"] = d["play"]
+            if d.get("wmplay"):
+                direct["wm"] = d["wmplay"]
+            if d.get("music"):
+                direct["mp3"] = d["music"]
+            images = [img.get("url") for img in (d.get("images") or []) if img.get("url")]
+            if not direct and images:
+                return {"title": d.get("title") or "", "direct": {}, "images": images,
+                        "thumbnail": images[0], "duration": d.get("duration")}
+            if not direct:
+                return None
+            return {"title": d.get("title") or "", "direct": direct, "images": images,
+                    "thumbnail": d.get("origin_cover") or d.get("cover") or "",
+                    "duration": d.get("duration")}
+    except Exception:
+        pass
+
+    # 2) 直连 tikwm（重试 3 次 + 镜像域名）
     hosts = ["https://www.tikwm.com", "https://tikwm.com", "https://tikwm.org"]
     r = None
     for attempt in range(3):

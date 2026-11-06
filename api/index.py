@@ -335,6 +335,21 @@ def _tikwm_resolve(url):
         return None
 
 
+def _fmt_rate_size(bps, size):
+    """码率/体积人类可读：2000000bps + 13107200B → "2M · 12.5MB"""
+    def rb(x):
+        if x >= 1e9:
+            return f"{x/1e9:.1f}".rstrip("0").rstrip(".") + "Gbps"
+        if x >= 1e6:
+            return f"{x/1e6:.1f}".rstrip("0").rstrip(".") + "M"
+        return f"{x/1e3:.0f}K"
+    out = rb(bps)
+    if size:
+        mb = size / 1048576
+        out += " · " + (f"{mb/1024:.2f}G" if mb >= 1024 else f"{mb:.1f}MB")
+    return out
+
+
 def _cd_header(safe, ext):
     """RFC 5987 双文件名头：HTTP 头只允许 latin-1，非 ASCII（日文/中文标题）必须走
     filename* 扩展，否则 WSGI 抛 UnicodeEncodeError → 函数 500。"""
@@ -689,7 +704,7 @@ def api_parse():
                         kbps = b.get("bit_rate") or 0
                         fmts2.append({"format_id": "bit" + str(b.get("bit_rate")),
                                       "ext": "mp4", "url": u2,
-                                      "label": str(kbps) + "kbps",
+                                      "label": _fmt_rate_size(kbps, b.get("data_size")),
                                       "filesize": b.get("data_size")})
                 mu = ""
                 try:

@@ -180,22 +180,22 @@ textarea{width:100%;background:var(--panel);border:1px solid var(--border);borde
   <div class="mask" id="authMask" style="display:none">
     <div class="modal" style="width:min(380px,92vw)">
       <div class="auth-tabs">
-        <button class="atab on" id="atabLogin">Sign in</button>
-        <button class="atab" id="atabReg">Sign up</button>
+        <button class="atab on" id="atabLogin" data-i18n="authLogin">Sign in</button>
+        <button class="atab" id="atabReg" data-i18n="authReg">Sign up</button>
       </div>
-      <label class="fld">Username</label>
+      <label class="fld" data-i18n="authUser">Username</label>
       <input id="authUser" autocomplete="username">
-      <label class="fld">Password</label>
+      <label class="fld" data-i18n="authPass">Password</label>
       <input id="authPass" type="password" autocomplete="current-password">
       <div id="regExtra" style="display:none">
-        <label class="fld">Confirm password</label>
+        <label class="fld" data-i18n="authPass2">Confirm password</label>
         <input id="authPass2" type="password">
       </div>
       <div id="authErr" class="autherr" style="display:none"></div>
       <button class="btn" id="btnSubmitAuth" style="width:100%;margin-top:14px">Sign in</button>
-      <div class="divider"><span>Or continue with</span></div>
+      <div class="divider"><span data-i18n="authOr">Or continue with</span></div>
       <div class="social" id="oauthBtns"></div>
-      <p class="agree">By continuing you agree to the Terms of Service</p>
+      <p class="agree" data-i18n="authAgree">By continuing you agree to the Terms of Service</p>
     </div>
   </div>
   <div id="toasts"></div>
@@ -236,6 +236,9 @@ zh: {
   batchTooMany:"链接超过 50 条，已截取前 50 条",
   linksCount:n=>`已识别 ${n} 条链接`,
   platMore:"等 1000+ 站点",
+  authLogin:"登 录", authReg:"注 册", authUser:"用户名", authPass:"密码",
+  authPass2:"确认密码", authOr:"或使用以下方式继续", authAgree:"继续即表示同意服务条款",
+  authNoMatch:"两次输入的密码不一致",
   foot1:"下载由服务器实时转发给浏览器 · 单文件建议 ≤ 2GB",
   foot2:"仅供个人学习交流，请尊重版权",
   reqFail:"请求失败 ",
@@ -265,6 +268,9 @@ en: {
   batchTooMany:"More than 50 links — kept the first 50",
   linksCount:n=>`${n} links detected`,
   platMore:"and 1000+ sites",
+  authLogin:"Sign in", authReg:"Sign up", authUser:"Username", authPass:"Password",
+  authPass2:"Confirm password", authOr:"Or continue with", authAgree:"By continuing you agree to the Terms of Service",
+  authNoMatch:"Passwords do not match",
   foot1:"Streamed through the server straight to your browser · single file ≤ 2GB recommended",
   foot2:"For personal study only. Please respect copyright.",
   reqFail:"Request failed ",
@@ -348,7 +354,7 @@ function setAuthMode(m){
   $("#atabLogin").classList.toggle("on", m==="login");
   $("#atabReg").classList.toggle("on", m==="register");
   $("#regExtra").style.display = m==="register" ? "block" : "none";
-  $("#btnSubmitAuth").textContent = m==="register" ? "Sign up" : "Sign in";
+  $("#btnSubmitAuth").textContent = t(m==="register" ? "authReg" : "authLogin");
   authErr("");
 }
 $("#atabLogin").onclick = ()=>setAuthMode("login");
@@ -384,7 +390,7 @@ async function submitAuth(){
   authErr("");
   if(name.length < 3 || name.length > 20) return authErr("Username: 3-20 characters");
   if(pwd.length < 6) return authErr("Password: at least 6 characters");
-  if(AUTH_MODE==="register" && $("#authPass2").value !== pwd) return authErr("Passwords do not match");
+  if(AUTH_MODE==="register" && $("#authPass2").value !== pwd) return authErr(t("authNoMatch"));
   const btn = $("#btnSubmitAuth"); btn.disabled = true;
   try{
     const j = await api("/api/auth/" + AUTH_MODE, {username:name, password:pwd});

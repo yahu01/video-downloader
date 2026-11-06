@@ -502,11 +502,33 @@ function renderGallery(v){
   $("#resultArea .panel").classList.add("flash");
 }
 
+/* ---------- JS 拉流下载（第三方小视频：失败弹提示可重试，不跳错误页） ---------- */
+async function dlBlob(u, name, ext){
+  const zh = LANG !== "en";
+  toast(zh ? "⏳ 开始下载…" : "⏳ Downloading…", "ok");
+  try{
+    const r = await fetch("/api/stream?u=" + encodeURIComponent(u) + "&name=" + encodeURIComponent((name||"video").slice(0,70)) + "&ext=" + ext, {headers:{"X-UI-Lang": LANG}});
+    if(!r.ok){
+      const j = await r.json().catch(()=>({}));
+      throw new Error(j.error || ("HTTP " + r.status));
+    }
+    const blob = await r.blob();
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = ((name||"video").replace(/[\\/:*?"<>|#]+/g,"_").slice(0,60)) + "." + ext;
+    a.click();
+    setTimeout(()=>URL.revokeObjectURL(a.href), 30000);
+    toast(zh ? "✅ 已保存到下载" : "✅ Saved to downloads", "ok");
+  }catch(e){
+    toast((zh ? "❌ 下载失败：" : "❌ Download failed: ") + e.message + (zh ? "（点按钮可重试）" : " (click to retry)"), "err");
+  }
+}
+
 function renderThirdparty(v){
   const d = v.direct || {};
-  const mk = (id, label, ext) => d[id] ? `<a class="btn small" style="text-decoration:none" href="/api/stream?u=${encodeURIComponent(d[id])}&name=${encodeURIComponent((v.title||"video").slice(0,70))}&ext=${ext}">${label}</a>` : "";
+  const mk = (id, label, ext) => d[id] ? `<button class="btn small" onclick="dlBlob(this.dataset.u, this.dataset.n, '${ext}')" data-u="${esc(d[id])}" data-n="${esc(v.title||"video")}">${label}</button>` : "";
   const bits = (v.formats||[]).filter(f=>/^bit\d+$/.test(f.format_id) && f.url);
-  const bitBtns = bits.map(f=>`<a class="btn small" style="text-decoration:none" href="/api/stream?u=${encodeURIComponent(f.url)}&name=${encodeURIComponent((v.title||"video").slice(0,70))}&ext=mp4">${esc(f.label||f.format_id)}</a>`).join(" ");
+  const bitBtns = bits.map(f=>`<button class="btn small" onclick="dlBlob(this.dataset.u, this.dataset.n, 'mp4')" data-u="${esc(f.url)}" data-n="${esc(v.title||"video")}">${esc(f.label||f.format_id)}</button>`).join(" ");
   $("#resultArea").innerHTML = `
     <div class="panel">
       <h3 style="font-size:16px;word-break:break-all">${esc(v.title)}</h3>

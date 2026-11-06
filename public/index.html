@@ -336,10 +336,10 @@ function renderUserChip(){
     $("#btnLoginTop").onclick = ()=>openAuth(null);
   }
 }
-function openAuth(after){
+function openAuth(after, mode){
   AUTH_AFTER = after;
   $("#authUser").value = ""; $("#authPass").value = ""; $("#authPass2").value = "";
-  setAuthMode("login"); renderOauthBtns();
+  setAuthMode(mode || "login"); renderOauthBtns();
   $("#authMask").classList.add("show");
   $("#authUser").focus();
 }
@@ -446,7 +446,7 @@ function setMode(m){
   if(m==="single") $("#urlInput").focus(); else $("#batchArea").focus();
 }
 $("#modeSingle").onclick = ()=>setMode("single");
-$("#modeBatch").onclick  = ()=>setMode("batch");
+$("#modeBatch").onclick  = ()=>{ setMode("batch"); if(!(ME && ME.user)) openAuth(null, "register"); };
 
 function updateBatchCount(){
   const urls=[...new Set(($("#batchArea").value.match(/https?:\/\/[^\s,，;；'"<>]+/gi)||[]).map(x=>x.trim()))];
@@ -673,7 +673,7 @@ function openPaywall(){
 }
 
 async function batch(urls){
-  if(!(ME && ME.user)){ openAuth(()=>batch(urls)); return; }   // 批量需登录
+  if(!(ME && ME.user)){ openAuth(()=>batch(urls), "register"); return; }   // 批量需登录 → 弹注册框
   if(ME.paid_required && !ME.user.paid){ openPaywall(); return; }  // PRO 付费墙
   $("#resultArea").innerHTML = `
     <div class="panel">

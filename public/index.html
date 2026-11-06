@@ -35,6 +35,14 @@ header{display:flex;align-items:center;gap:14px;padding:20px 0 6px}
 /* 广告位 */
 .ad-banner{display:flex;align-items:center;gap:14px;background:var(--panel);border:1px solid var(--border);
   border-radius:14px;padding:14px 18px;margin:18px 0;color:var(--text);transition:border-color .2s,transform .2s}
+
+/* 平台条 + 批量入口 */
+.platRow{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:24px}
+.plat{font-size:12px;color:var(--muted);border:1px solid var(--border);border-radius:99px;padding:5px 13px;background:var(--panel)}
+.plat.more{color:var(--accent2);border-color:rgba(34,211,238,.35);background:rgba(34,211,238,.08)}
+.batchRow{display:flex;align-items:center;gap:12px;justify-content:center;margin-top:16px}
+.batchRow .batchHint{font-size:12.5px;color:var(--muted)}
+#btnBatch{padding:8px 16px;font-size:13px}
 .ad-banner:hover{border-color:rgba(109,94,252,.5);transform:translateY(-2px)}
 .ad-banner img{width:72px;height:72px;border-radius:10px;object-fit:cover;flex:0 0 auto}
 .ad-body{flex:1;min-width:0}
@@ -138,10 +146,35 @@ textarea{width:100%;background:var(--panel);border:1px solid var(--border);borde
       <input id="urlInput" data-i18n-ph="urlPh" placeholder="粘贴视频链接；多个链接可批量" autofocus>
       <button class="btn" id="btnGo" data-i18n="parse">解析下载</button>
     </div>
+    <div class="batchRow">
+      <button class="icon-btn" id="btnBatch" data-i18n="batchBtn">📋 批量下载</button>
+      <span class="batchHint" data-i18n="batchHint">支持多链接批量 · 一行一个</span>
+    </div>
+    <div class="platRow">
+      <span class="plat">YouTube</span><span class="plat">TikTok</span><span class="plat">Twitter / X</span>
+      <span class="plat">Instagram</span><span class="plat">Facebook</span><span class="plat">Vimeo</span>
+      <span class="plat">Twitch</span><span class="plat">SoundCloud</span><span class="plat">Douyin 抖音</span>
+      <span class="plat more" data-i18n="platMore">等 1000+ 站点</span>
+    </div>
   </div>
 
   <div id="adSlot" style="display:none;margin-top:18px"></div>
   <div id="resultArea"></div>
+
+  <!-- batch modal -->
+  <div class="mask" id="batchMask" style="display:none">
+    <div class="modal" style="width:min(560px,94vw)">
+      <h3 style="font-size:16px" data-i18n="batchTitle">📋 批量下载队列</h3>
+      <p style="color:var(--muted);font-size:12.5px;margin-top:6px" data-i18n="batchTip">每行粘贴一个视频链接（最多 50 条）</p>
+      <textarea id="batchArea" rows="7" spellcheck="false" style="width:100%;margin-top:12px;background:rgba(255,255,255,.05);
+        border:1px solid var(--border);border-radius:12px;padding:12px;color:var(--text);font-size:13px;
+        outline:none;resize:vertical;font-family:inherit"></textarea>
+      <div style="display:flex;gap:10px;margin-top:16px;align-items:center">
+        <button class="btn" id="btnBatchGo" data-i18n="batchStart" style="margin-top:0">🚀 开始批量下载</button>
+        <button class="icon-btn" id="btnBatchCancel">✕</button>
+      </div>
+    </div>
+  </div>
 
   <!-- auth modal -->
   <div class="mask" id="authMask" style="display:none">
@@ -195,6 +228,10 @@ zh: {
   bestMerged:"最佳画质（自动合并音视频）",
   plTitle:"批量队列", batchDone:(q,f)=>`批量完成：成功 ${q}，失败 ${f}`,
   bOk:"✅ 已开始", bRun:"⏳ 下载中…", bErr:"❌ 失败",
+  batchBtn:"📋 批量下载", batchHint:"支持多链接批量 · 一行一个",
+  batchTitle:"📋 批量下载队列", batchTip:"每行粘贴一个视频链接（最多 50 条）",
+  batchStart:"🚀 开始批量下载",
+  platMore:"等 1000+ 站点",
   foot1:"下载由服务器实时转发给浏览器 · 单文件建议 ≤ 2GB",
   foot2:"仅供个人学习交流，请尊重版权",
   reqFail:"请求失败 ",
@@ -216,13 +253,16 @@ en: {
   bestMerged:"Best quality (video+audio merged)",
   plTitle:"Batch queue", batchDone:(q,f)=>`Batch done: ${q} ok, ${f} failed`,
   bOk:"✅ started", bRun:"⏳ downloading…", bErr:"❌ failed",
+  batchBtn:"📋 Batch download", batchHint:"Multiple links supported · one per line",
+  batchTitle:"📋 Batch queue", batchTip:"Paste one video link per line (up to 50)",
+  batchStart:"🚀 Start batch",
+  platMore:"and 1000+ sites",
   foot1:"Streamed through the server straight to your browser · single file ≤ 2GB recommended",
   foot2:"For personal study only. Please respect copyright.",
   reqFail:"Request failed ",
 }};
 
-let LANG = localStorage.getItem("ui_lang") ||
-  (navigator.language && navigator.language.toLowerCase().startsWith("zh") ? "zh" : "en");
+let LANG = localStorage.getItem("ui_lang") || "en";  // 国际站默认英文；用户手动切换后记忆
 function t(k){ const d = I18N[LANG] || I18N.zh; return d[k] !== undefined ? d[k] : (I18N.zh[k] !== undefined ? I18N.zh[k] : k); }
 
 function applyLang(){
@@ -623,6 +663,18 @@ async function batch(urls){
 
 $("#btnGo").onclick = ()=>parseUrl($("#urlInput").value);
 $("#urlInput").addEventListener("keydown", e=>{ if(e.key==="Enter") parseUrl($("#urlInput").value); });
+
+/* ---------- 批量下载入口 ---------- */
+$("#btnBatch").onclick = ()=>{ $("#batchMask").classList.add("show"); $("#batchArea").focus(); };
+$("#btnBatchCancel").onclick = ()=>{ $("#batchMask").classList.remove("show"); };
+$("#batchMask").onclick = e => { if(e.target.id==="batchMask") $("#batchMask").classList.remove("show"); };
+$("#btnBatchGo").onclick = ()=>{
+  let urls=[...new Set(($("#batchArea").value.match(/https?:\/\/[^\s,，;；'"<>]+/gi)||[]).map(x=>x.trim()))];
+  if(!urls.length) return toast(t("needUrl"), "err");
+  if(urls.length>50) urls = urls.slice(0,50);
+  $("#batchMask").classList.remove("show");
+  batch(urls);
+};
 refreshMe();
 applyLang();
 </script>

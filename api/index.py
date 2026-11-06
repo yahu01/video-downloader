@@ -285,6 +285,22 @@ def _tikwm_resolve(url):
         return None
 
 
+def _upstream_headers(u):
+    """按直链域名构造防盗链请求头：抖音/TikTok CDN 必须 Referer，且要求 Range 请求。"""
+    host = (urllib.parse.urlparse(u).hostname or "").lower()
+    h = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/125.0"}
+    if "douyin" in host or "iesdouyin" in host or "douyinvod" in host or "zjcdn" in host:
+        h["Referer"] = "https://www.douyin.com/"
+    elif "tikwm" in host:
+        h["Referer"] = "https://www.tikwm.com/"
+    elif "tiktok" in host or "akamaized" in host or "byteoversea" in host or "muscdn" in host or "musical" in host:
+        h["Referer"] = "https://www.tiktok.com/"
+    elif "bilibili" in host or "hdslb" in host:
+        h["Referer"] = "https://www.bilibili.com/"
+    h["Range"] = "bytes=0-"
+    return h
+
+
 @app.get("/api/stream")
 def api_stream():
     """第三方直链的代理流：服务端拉流转发给浏览器（带下载文件名）"""
@@ -300,12 +316,13 @@ def api_stream():
     safe = re.sub(r'[\\/:*?"<>|]', "_", name)
     import requests as _rq
     try:
-        up = _rq.get(u, stream=True, timeout=(15, 300),
-                     headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/125.0"})
+        up = _rq.get(u, stream=True, timeout=(15, 300), headers=_upstream_headers(u))
         up.raise_for_status()
     except Exception as ex:
         return jsonify(error=f"fetch failed: {str(ex)[:120]}"), 502
     ctype = up.headers.get("Content-Type") or ("audio/mpeg" if ext == "mp3" else "video/mp4")
+    if "html" in ctype.lower():
+        ctype = "video/mp4" if ext != "mp3" else "audio/mpeg"
     def gen():
         try:
             for chunk in up.iter_content(65536):

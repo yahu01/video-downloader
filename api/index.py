@@ -252,14 +252,30 @@ def _rq_get_img(url):
 
 
 def _tikwm_resolve(url):
-    """tikwm.com 第三方解析：TikTok + Douyin（抖音）无水印直链。失败返回 None。"""
+    """tikwm.com 第三方解析：TikTok + Douyin（抖音）无水印直链。
+    免费接口限 1 req/s 且机房 IP 易撞限流：重试 3 次 + 镜像域名兜底；失败返回 None。"""
+    import time as _t2
+    hosts = ["https://www.tikwm.com", "https://tikwm.com", "https://tikwm.org"]
+    r = None
+    for attempt in range(3):
+        host = hosts[attempt % len(hosts)]
+        try:
+            req = urllib.request.Request(
+                host + "/api/?url=" + urllib.parse.quote(url, safe="") + "&hd=1",
+                headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/125.0",
+                         "Referer": host + "/",
+                         "Accept": "application/json"})
+            r = json.loads(urllib.request.urlopen(req, timeout=20).read())
+            if r.get("code") == 0 and r.get("data"):
+                break
+            # code!=0（限流/风控）→ 换下一个域名重试
+            r = None
+        except Exception:
+            r = None
+        _t2.sleep(0.8)
+    if not r or not r.get("data"):
+        return None
     try:
-        req = urllib.request.Request(
-            "https://tikwm.com/api/?url=" + urllib.parse.quote(url, safe="") + "&hd=1",
-            headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/125.0"})
-        r = json.loads(urllib.request.urlopen(req, timeout=25).read())
-        if r.get("code") != 0 or not r.get("data"):
-            return None
         d = r["data"]
         direct = {}
         if d.get("hdplay"):
@@ -684,6 +700,14 @@ def api_parse():
                    for e in (info.get("entries") or [])[:100] if e]
         return jsonify(type="playlist", title=info.get("title") or "Playlist",
                        count=len(entries), entries=entries)
+
+    # 抖音/TikTok：第三方全失败且 yt-dlp 只拿到纯音频（平台对机房 IP 的风控特征）
+    # → 明确报错，避免渲染出没有视频可下载的坏卡片
+    if (DOUYIN_RE.search(url) or re.search(r"tiktok\.com", url, re.I)) and \
+       not any((f.get("vcodec") or "none") not in ("none", "", None) for f in (info.get("formats") or [])):
+        return jsonify(error=_e(
+            "解析源暂时不可用（平台风控/限流），请稍后重试或换个链接",
+            "Parsing source temporarily unavailable (rate-limited), please retry later", lang)), 502
 
     fmts = []
     for f in info.get("formats") or []:

@@ -631,26 +631,11 @@ function renderPlaylist(p){
       </div>
       <div style="font-size:12px;color:var(--muted);margin-top:8px">${esc(t("batchNote")||"按最佳画质逐条开始浏览器下载")}</div>
     </div>`;
-  $("#plAll").onclick = async ()=>{
-    const items = p.entries.slice(0, 20);
-    let q = 0, f = 0;
-    for(let i=0; i<items.length; i++){
-      const st = document.getElementById("pl-"+i);
-      if(st) st.className = "status st-run", st.textContent = "⏳";
-      try{
-        const r = await fetch(streamUrl(items[i].url, "b", items[i].title), {headers:{"X-UI-Lang":LANG}});
-        if(!r.ok) throw new Error(r.status);
-        const blob = await r.blob();
-        const a = document.createElement("a");
-        a.href = URL.createObjectURL(blob);
-        a.download = (items[i].title || ("video"+i)).slice(0,70) + ".mp4";
-        a.click(); URL.revokeObjectURL(a.href);
-        q++; if(st){ st.className="status st-ok"; st.textContent = "✅"; }
-      }catch(e){
-        f++; if(st){ st.className="status st-err"; st.textContent = "❌"; }
-      }
-    }
-    toast(t("batchDone")(q, f), f?"err":"ok");
+  $("#plAll").onclick = ()=>{
+    // 播放列表批量下载与批量队列同一门禁：需登录（付费开关开启时还需 PRO）
+    const items = p.entries.slice(0, 20).map(e=>e.url).filter(Boolean);
+    if(!items.length) return toast(t("needUrl"), "err");
+    batch(items);
   };
 }
 

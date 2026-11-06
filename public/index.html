@@ -519,8 +519,41 @@ function renderPlaylist(p){
   };
 }
 
+function openPaywall(){
+  const zh = (LANG !== "en");
+  const price = Number(ME && ME.price || 9.9);
+  const html = zh ? `
+    <h2>🔒 批量下载为 PRO 功能</h2>
+    <p style="margin:12px 0;color:var(--muted);line-height:1.9">
+      单视频下载免费不限次。批量队列需要开通 PRO（<b style="color:var(--ok)">￥${price}</b> / 一次性）。<br>
+      如需开通，请联系站长或在注册后留言，人工开通后即刻生效。
+    </p>
+    <div style="display:flex;gap:10px">
+      <button class="btn" onclick="this.closest('.modal-mask').remove()">我知道了</button>
+    </div>` : `
+    <h2>🔒 Batch download is a PRO feature</h2>
+    <p style="margin:12px 0;color:var(--muted);line-height:1.9">
+      Single-video downloads are free & unlimited. Batch queue requires PRO (<b style="color:var(--ok)">$${price}</b>, one-time).<br>
+      Contact the site owner to get PRO enabled — it takes effect immediately.
+    </p>
+    <div style="display:flex;gap:10px">
+      <button class="btn" onclick="this.closest('.modal-mask').remove()">Got it</button>
+    </div>`;
+  const mask = document.createElement("div");
+  mask.className = "modal-mask";
+  mask.style.cssText = "position:fixed;inset:0;background:#000a;display:flex;align-items:center;justify-content:center;z-index:200";
+  const box = document.createElement("div");
+  box.className = "panel";
+  box.style.cssText = "max-width:420px;margin:20px";
+  box.innerHTML = html;
+  mask.appendChild(box);
+  mask.onclick = e => { if(e.target === mask) mask.remove(); };
+  document.body.appendChild(mask);
+}
+
 async function batch(urls){
   if(!(ME && ME.user)){ openAuth(()=>batch(urls)); return; }   // 批量需登录
+  if(ME.paid_required && !ME.user.paid){ openPaywall(); return; }  // PRO 付费墙
   $("#resultArea").innerHTML = `
     <div class="panel">
       <h2>${esc(t("plTitle"))} <span class="cnt">${urls.length}</span></h2>

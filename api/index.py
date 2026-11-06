@@ -234,7 +234,17 @@ def api_me():
     return jsonify(
         user=({"name": uid, "paid": bool(prof.get("paid"))} if prof else None),
         paid_required=bool(_cfg_get("paid_required", False)),
+        price=_cfg_get("price", 9.9),
         oauth=providers)
+
+
+def _rq_get_img(url):
+    import requests as _rq
+    r = _rq.get(url, timeout=30,
+                headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/125.0",
+                         "Referer": "https://www.douyin.com/"})
+    r.raise_for_status()
+    return r.content
 
 
 def _tikwm_resolve(url):
@@ -526,8 +536,28 @@ def api_parse():
         return jsonify(error=_e("请输入网址", "Please enter a URL", lang)), 400
     if BLOCK_RE.search(url):
         return jsonify(error=_e(
-            "该国内站点在云部署版暂不支持（境外节点风控），请使用本地版",
-            "Domestic sites are not supported in cloud edition", 400)), 400
+            "小红书/快手暂不支持云解析（站点无公开接口），请使用本地版",
+            "Xiaohongshu/Kuaishou are not supported in cloud edition", 400)), 400
+
+    # 抖音/TikTok 图集（images only）→ 服务端打包 ZIP 直接下载
+    if (DOUYIN_RE.search(url) or re.search(r"tiktok\.com", url, re.I)) and request.args.get("zip") == "1":
+        tk = _tikwm_resolve(url) or {}
+        imgs = tk.get("images") or []
+        if imgs:
+            import io
+            import zipfile as _zipmod
+            buf = io.BytesIO()
+            with _zipmod.ZipFile(buf, "w", _zipmod.ZIP_DEFLATED) as zf:
+                for i, iu in enumerate(imgs):
+                    try:
+                        rr = _rq_get_img(iu)
+                        zf.writestr(f"{i+1:02d}.jpg", rr)
+                    except Exception:
+                        continue
+            buf.seek(0)
+            safe = re.sub(r'[\\/:*?"<>|]', "_", url)[:60]
+            return Response(buf, mimetype="application/zip",
+                            headers={"Content-Disposition": f'attachment; filename="{safe}-images.zip"'})
 
     # 抖音 / TikTok：优先 tikwm 第三方解析（无水印直链，绕开双平台风控）
     if DOUYIN_RE.search(url) or re.search(r"tiktok\.com", url, re.I):
@@ -687,6 +717,173 @@ def _headers_str(h):
     crlf = chr(13) + chr(10)
     return "".join(k + ": " + v + crlf for k, v in (h or {}).items())
 
+
+
+# ---------------- Admin (cloud edition) ----------------
+
+_ADMIN_FAILS = {}
+
+
+def _admin_password():
+    pw = os.environ.get("ADMIN_PASSWORD", "")
+    if pw:
+        return pw
+    return str(data_config().get("admin_pass") or "")
+
+
+def _admin_ip():
+    return request.headers.get("X-Forwarded-For", request.remote_addr or "?")
+
+
+def _admin_limited():
+    rec = _ADMIN_FAILS.get(_admin_ip())
+    return bool(rec and rec[0] >= 8 and time.time() - rec[1] < 900)
+
+
+def _admin_fail():
+    key = _admin_ip()
+    c, t0 = _ADMIN_FAILS.get(key, [0, time.time()])
+    if time.time() - t0 > 900:
+        c, t0 = 0, time.time()
+    _ADMIN_FAILS[key] = [c + 1, t0]
+
+
+def _admin_reset():
+    _ADMIN_FAILS.pop(_admin_ip(), None)
+
+
+def _admin_ok():
+    return session.get("admin") is True
+
+
+def _admin_gate():
+    if not _admin_ok():
+        return jsonify(error="admin auth required"), 401
+    return None
+
+
+@app.post("/api/admin/login")
+def admin_login():
+    if _admin_limited():
+        return jsonify(error="too many attempts"), 429
+    pw = (request.get_json(silent=True) or {}).get("password", "")
+    if not pw or pw != _admin_password():
+        _admin_fail()
+        return jsonify(error="wrong admin password"), 401
+    _admin_reset()
+    session["admin"] = True
+    return jsonify(ok=True)
+
+
+@app.post("/api/admin/logout")
+def admin_logout():
+    session.pop("admin", None)
+    return jsonify(ok=True)
+
+
+@app.get("/api/admin/session")
+def admin_session():
+    return jsonify(admin=_admin_ok())
+
+
+@app.get("/api/admin/data")
+def admin_data():
+    gate = _admin_gate()
+    if gate:
+        return gate
+    users = data_read().get("users") or {}
+    out = []
+    for name, p in users.items():
+        p = p or {}
+        out.append({"name": name, "provider": p.get("provider") or "local",
+                    "paid": bool(p.get("paid")), "created": p.get("created"),
+                    "email": p.get("email") or ""})
+    out.sort(key=lambda x: x.get("created") or 0, reverse=True)
+    return jsonify(users=out,
+                   config={"paid_required": bool(data_config().get("paid_required", False)),
+                           "price": float(data_config().get("price", PRICE))})
+
+
+@app.get("/api/admin/stats")
+def admin_stats():
+    gate = _admin_gate()
+    if gate:
+        return gate
+    users = data_read().get("users") or {}
+    day0 = time.time() - time.time() % 86400
+    total = len(users)
+    paid = sum(1 for u in users.values() if (u or {}).get("paid"))
+    gh = sum(1 for u in users.values() if (u or {}).get("provider") == "github")
+    local = sum(1 for u in users.values() if (u or {}).get("provider") == "local")
+    today = sum(1 for u in users.values() if (u or {}).get("created") or 0 >= day0)
+    return jsonify(total=total, paid=paid, github=gh, local=local, today=today)
+
+
+@app.post("/api/admin/user/paid")
+def admin_user_paid():
+    gate = _admin_gate()
+    if gate:
+        return gate
+    d = request.get_json(silent=True) or {}
+    name = d.get("name") or ""
+    dd = data_read()
+    users = dd.get("users") or {}
+    if name not in users:
+        return jsonify(error="user not found"), 404
+    users[name]["paid"] = bool(d.get("paid"))
+    data_write(dd)
+    return jsonify(ok=True)
+
+
+@app.post("/api/admin/user/delete")
+def admin_user_delete():
+    gate = _admin_gate()
+    if gate:
+        return gate
+    d = request.get_json(silent=True) or {}
+    name = d.get("name") or ""
+    dd = data_read()
+    if name not in (dd.get("users") or {}):
+        return jsonify(error="user not found"), 404
+    del dd["users"][name]
+    data_write(dd)
+    return jsonify(ok=True)
+
+
+@app.get("/api/admin/config")
+def admin_config_get():
+    gate = _admin_gate()
+    if gate:
+        return gate
+    c = data_read().get("config") or {}
+    return jsonify(paid_required=bool(c.get("paid_required")),
+                   price=c.get("price", 9.9))
+
+
+@app.post("/api/admin/config")
+def admin_config_set():
+    gate = _admin_gate()
+    if gate:
+        return gate
+    d = request.get_json(silent=True) or {}
+    dd = data_read()
+    c = dd.setdefault("config", {})
+    if "paid_required" in d:
+        c["paid_required"] = bool(d.get("paid_required"))
+    if "price" in d:
+        try:
+            c["price"] = round(float(d["price"]), 2)
+        except (TypeError, ValueError):
+            pass
+    if d.get("admin_pass"):
+        c["admin_pass_hash"] = generate_password_hash(str(d["admin_pass"]))
+    data_write(dd)
+    return jsonify(ok=True)
+
+
+@app.get("/admin")
+def admin_page():
+    return send_from_directory(os.path.join(os.path.dirname(__file__), "..", "public"), "admin.html")
 
 
 def douyin_cookie_file():

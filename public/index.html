@@ -270,7 +270,8 @@ en: {
   reqFail:"Request failed ",
 }};
 
-let LANG = localStorage.getItem("ui_lang") || "en";  // 国际站默认英文；用户手动切换后记忆
+let LANG = localStorage.getItem("ui_lang") ||
+  (location.hostname.startsWith("dl.") ? "zh" : "en");  // dl. 域名默认中文，其余默认英文；用户手动切换后记忆
 function t(k){ const d = I18N[LANG] || I18N.zh; return d[k] !== undefined ? d[k] : (I18N.zh[k] !== undefined ? I18N.zh[k] : k); }
 
 function applyLang(){

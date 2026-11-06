@@ -46,19 +46,27 @@ td.wrap{white-space:normal;word-break:break-all}
 .toast{position:fixed;top:16px;left:50%;transform:translateX(-50%);background:#161b22;
   border:1px solid var(--border);border-radius:8px;padding:10px 16px;font-size:13.5px;z-index:99}
 .searchbox{flex:1;min-width:180px}
+#capImg{display:inline-block;cursor:pointer;vertical-align:middle}
+#capImg svg{border-radius:6px;border:1px solid var(--border);display:block}
 </style>
 </head>
 <body>
 <div class="wrap">
-  <div id="loginBox" class="card">
-    <h1>🔐 管理后台</h1>
-    <p class="sub">Video Downloader · 输入管理密码登录</p>
-    <div class="row">
-      <input id="pass" type="password" class="searchbox" placeholder="管理密码">
-      <button class="btn" onclick="login()">登录</button>
+    <div id="loginBox" class="card">
+      <h1>🔐 管理后台</h1>
+      <p class="sub">Video Downloader · 账号密码登录</p>
+      <label class="fld">账号</label>
+      <input id="user" type="text" class="searchbox" placeholder="管理账号" autocomplete="username">
+      <label class="fld">密码</label>
+      <input id="pass" type="password" class="searchbox" placeholder="管理密码" autocomplete="current-password">
+      <label class="fld">验证码（点击图片可刷新）</label>
+      <div class="row">
+        <input id="cap" type="text" class="searchbox" placeholder="计算结果" style="flex:1">
+        <span id="capImg" title="点击刷新验证码" onclick="loadCaptcha()"></span>
+      </div>
+      <div style="margin-top:14px"><button class="btn" onclick="login()">登 录</button></div>
+      <p class="hint">默认账号 admin，密码由站长保管（见 vercel-admin-password.txt，可在「设置」页修改）</p>
     </div>
-    <p class="hint">管理密码由站长保管（首次部署时生成，见 vercel-admin-password.txt / 更新于设置页）</p>
-  </div>
 
   <div id="panel" style="display:none">
     <h1>🛠 管理后台
@@ -108,6 +116,8 @@ td.wrap{white-space:normal;word-break:break-all}
         </label>
         <label class="fld">单次开通价格（元，展示用）</label>
         <input id="setPrice" type="number" step="0.01" min="0" style="width:140px">
+        <label class="fld">管理账号</label>
+        <input id="setUser" type="text" style="width:280px">
         <label class="fld">新的管理密码（留空 = 不修改）</label>
         <input id="setPass" type="text" style="width:280px">
         <div style="margin-top:14px"><button class="btn" onclick="saveSet()">保存设置</button></div>
@@ -135,8 +145,19 @@ async function api(path, body, method){
 }
 
 async function login(){
-  try{ await api("/api/admin/login", {password: $("#pass").value}); boot(); }
-  catch(e){ toast(e.message, false); }
+  try{
+    await api("/api/admin/login", {username: $("#user").value.trim(), password: $("#pass").value,
+                                   captcha_id: CAPID, captcha: $("#cap").value.trim()});
+    boot();
+  }catch(e){ toast(e.message, false); $("#cap").value=""; loadCaptcha(); }
+}
+let CAPID = "";
+async function loadCaptcha(){
+  try{
+    const c = await api("/api/admin/captcha");
+    CAPID = c.id;
+    $("#capImg").innerHTML = c.svg;
+  }catch(e){}
 }
 async function logout(){ try{ await api("/api/admin/logout", {}); }catch{} location.reload(); }
 
@@ -196,11 +217,14 @@ async function loadConfig(){
     const c = await api("/api/admin/config");
     $("#setPrice").value = c.price ?? 9.9;
     $("#paidReq").checked = !!c.paid_required;
+    $("#setUser").value = c.admin_user || "admin";
   }catch(e){}
 }
 async function saveSet(){
   try{
     const body = {paid_required: $("#paidReq").checked, price: parseFloat($("#setPrice").value||"9.9")};
+    const un = $("#setUser").value.trim();
+    if(un) body.admin_user = un;
     if($("#setPass").value.trim()) body.admin_pass = $("#setPass").value.trim();
     await api("/api/admin/config", body);
     $("#setPass").value = "";
@@ -210,6 +234,7 @@ async function saveSet(){
 }
 
 async function boot(){
+  loadCaptcha();
   try{
     const s = await api("/api/admin/session");
     if(s.admin){ $("#loginBox").style.display="none"; $("#panel").style.display="block"; loadStats(); loadUsers(); loadConfig(); }

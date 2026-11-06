@@ -733,6 +733,81 @@ def _admin_password():
     return str(data_config().get("admin_pass") or "")
 
 
+def _admin_user():
+    return str(os.environ.get("ADMIN_USER", "")
+               or data_config().get("admin_user") or "admin")
+
+
+def _verify_admin_pw(pw):
+    """环境变量优先；其次后台保存的哈希；兼容旧明文 admin_pass。"""
+    env = os.environ.get("ADMIN_PASSWORD", "")
+    if env:
+        return pw == env
+    c = data_config()
+    h = c.get("admin_pass_hash")
+    if h:
+        try:
+            return check_password_hash(str(h), pw)
+        except Exception:
+            return False
+    stored = c.get("admin_pass")
+    return bool(stored) and pw == str(stored)
+
+
+# ---- 图形验证码（无状态：SVG 服务端渲染，答案仅以 HMAC 形式随 token 下发） ----
+import hmac as _hmac
+import random as _rnd
+
+_CAP_TTL = 300  # 5 分钟
+
+
+def _cap_hmac(text):
+    return _hmac.new(app.secret_key, text.encode(), _hashlib.sha256).hexdigest()[:20]
+
+
+def _captcha_svg(text):
+    w, h = 150, 42
+    parts = [f'<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}" viewBox="0 0 {w} {h}">',
+             f'<rect width="{w}" height="{h}" fill="#eef1f5" rx="6"/>']
+    cols = ["#b85c5c", "#5c8ab8", "#6aa84f", "#8a6ab8", "#c78a3d"]
+    for _ in range(5):
+        x1, y1, x2, y2 = _rnd.randint(0, w), _rnd.randint(0, h), _rnd.randint(0, w), _rnd.randint(0, h)
+        parts.append(f'<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" '
+                     f'stroke="{_rnd.choice(cols)}" stroke-width="1.5" opacity="0.55"/>')
+    for _ in range(8):
+        parts.append(f'<circle cx="{_rnd.randint(0, w)}" cy="{_rnd.randint(0, h)}" '
+                     f'r="{_rnd.randint(1, 2)}" fill="{_rnd.choice(cols)}" opacity="0.5"/>')
+    x = 14
+    for ch in text:
+        if ch == " ":
+            x += 5
+            continue
+        rot = _rnd.randint(-16, 16)
+        y = 28 + _rnd.randint(-3, 3)
+        fs = 21 + _rnd.randint(0, 4)
+        parts.append(f'<text x="{x}" y="{y}" font-family="Georgia, serif" font-size="{fs}" '
+                     f'fill="#1a1a2e" transform="rotate({rot} {x} {y})">{ch}</text>')
+        x += fs - 5
+    parts.append("</svg>")
+    return "".join(parts)
+
+
+def _captcha_check(cid, user_ans):
+    try:
+        blob, sig = str(cid).split(".", 1)
+        if not _hmac.compare_digest(sig, _cap_hmac(blob)):
+            return False
+        pad = "=" * (-len(blob) % 4)
+        p = json.loads(_b64.urlsafe_b64decode(blob + pad).decode())
+        exp = int(p.get("exp") or 0)
+        if _time.time() > exp:
+            return False
+        uh = _cap_hmac(f"{str(user_ans).strip()}|{exp}")
+        return _hmac.compare_digest(uh, str(p.get("h")))
+    except Exception:
+        return False
+
+
 def _admin_ip():
     return request.headers.get("X-Forwarded-For", request.remote_addr or "?").split(",")[0].strip()
 
@@ -764,14 +839,33 @@ def _admin_gate():
     return None
 
 
+@app.get("/api/admin/captcha")
+def admin_captcha():
+    a, b = _rnd.randint(10, 89), _rnd.randint(2, 9)
+    if _rnd.random() < 0.5:
+        q, ans = f"{a} + {b}", a + b
+    else:
+        if b > a:
+            a, b = b, a
+        q, ans = f"{a} - {b}", a - b
+    exp = int(_time.time()) + _CAP_TTL
+    p = {"h": _cap_hmac(f"{ans}|{exp}"), "exp": exp}
+    blob = _b64.urlsafe_b64encode(json.dumps(p).encode()).decode().rstrip("=")
+    return jsonify(id=blob + "." + _cap_hmac(blob), svg=_captcha_svg(q + " = ?"))
+
+
 @app.post("/api/admin/login")
 def admin_login():
     if _admin_limited():
         return jsonify(error="too many attempts"), 429
-    pw = (request.get_json(silent=True) or {}).get("password", "")
-    if not pw or pw != _admin_password():
+    d = request.get_json(silent=True) or {}
+    if not _captcha_check(str(d.get("captcha_id") or ""), str(d.get("captcha") or "")):
+        return jsonify(error="captcha invalid"), 400
+    uname = str(d.get("username") or "").strip()
+    pw = str(d.get("password") or "")
+    if uname != _admin_user() or not pw or not _verify_admin_pw(pw):
         _admin_fail()
-        return jsonify(error="wrong admin password"), 401
+        return jsonify(error="wrong username or password"), 401
     _admin_reset()
     session["admin"] = True
     return jsonify(ok=True)
@@ -859,7 +953,8 @@ def admin_config_get():
         return gate
     c = data_read().get("config") or {}
     return jsonify(paid_required=bool(c.get("paid_required")),
-                   price=c.get("price", 9.9))
+                   price=c.get("price", 9.9),
+                   admin_user=_admin_user())
 
 
 @app.post("/api/admin/config")
@@ -877,6 +972,8 @@ def admin_config_set():
             c["price"] = round(float(d["price"]), 2)
         except (TypeError, ValueError):
             pass
+    if d.get("admin_user"):
+        c["admin_user"] = str(d["admin_user"]).strip()
     if d.get("admin_pass"):
         c["admin_pass_hash"] = generate_password_hash(str(d["admin_pass"]))
     data_write(dd)

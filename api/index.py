@@ -335,6 +335,17 @@ def _tikwm_resolve(url):
         return None
 
 
+def _cd_header(safe, ext):
+    """RFC 5987 双文件名头：HTTP 头只允许 latin-1，非 ASCII（日文/中文标题）必须走
+    filename* 扩展，否则 WSGI 抛 UnicodeEncodeError → 函数 500。"""
+    from urllib.parse import quote as _uq
+    ascii_name = safe.encode("ascii", "ignore").decode().strip().strip(".") or "video"
+    ascii_name = re.sub(r'[\\/:*?"<>|#]+', "_", ascii_name)[:60]
+    utf8_name = re.sub(r'[\\/:*?"<>|#]+', "_", str(safe))[:60] or "video"
+    return ('attachment; filename="' + ascii_name + "." + ext + '"; '
+            "filename*=UTF-8''" + _uq(utf8_name) + "." + ext)
+
+
 def _upstream_headers(u):
     """按直链域名构造防盗链请求头：抖音/TikTok CDN 必须 Referer，且要求 Range 请求。"""
     host = (urllib.parse.urlparse(u).hostname or "").lower()
@@ -381,7 +392,7 @@ def api_stream():
         finally:
             up.close()
     return Response(stream_with_context_wrap(gen()), mimetype=ctype,
-                    headers={"Content-Disposition": f'attachment; filename="{safe}.{ext}"',
+                    headers={"Content-Disposition": _cd_header(safe, ext),
                              "Cache-Control": "no-store"})
 
 
@@ -418,7 +429,7 @@ def api_zip():
         return jsonify(error="all images failed"), 502
     buf.seek(0)
     return Response(buf, mimetype="application/zip",
-                    headers={"Content-Disposition": f'attachment; filename="{name}.zip"',
+                    headers={"Content-Disposition": _cd_header(name, "zip"),
                              "Cache-Control": "no-store"})
 
 
@@ -628,7 +639,7 @@ def api_parse():
             buf.seek(0)
             safe = re.sub(r'[\\/:*?"<>|]', "_", url)[:60]
             return Response(buf, mimetype="application/zip",
-                            headers={"Content-Disposition": f'attachment; filename="{safe}-images.zip"'})
+                            headers={"Content-Disposition": _cd_header(safe + "-images", "zip")})
 
     # 抖音 / TikTok：优先 tikwm 第三方解析（无水印直链，绕开双平台风控）
     if DOUYIN_RE.search(url) or re.search(r"tiktok\.com", url, re.I):
@@ -1218,7 +1229,7 @@ def _download_impl():
                         yield chunk
         ctype = "audio/mp4" if ext in ("m4a", "mp3") else "video/mp4"
         return Response(stream_with_context_wrap(gen()), mimetype=ctype,
-                        headers={"Content-Disposition": "attachment; filename=\"" + safe + "." + ext + "\"",
+                        headers={"Content-Disposition": _cd_header(safe, ext),
                                  "Cache-Control": "no-store"})
 
     # merge：ffmpeg 管道实时合并（分离流，如 YouTube 高清）
@@ -1264,7 +1275,7 @@ def _download_impl():
                 pass
 
     return Response(stream_with_context_wrap(gen()), mimetype="video/mp4",
-                    headers={"Content-Disposition": "attachment; filename=\"" + safe + ".mp4\"",
+                    headers={"Content-Disposition": _cd_header(safe, "mp4"),
                              "Cache-Control": "no-store"})
 
 def stream_with_context_wrap(gen):

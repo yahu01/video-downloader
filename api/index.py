@@ -721,6 +721,8 @@ def _headers_str(h):
 
 # ---------------- Admin (cloud edition) ----------------
 
+import time as _adm_time
+
 _ADMIN_FAILS = {}
 
 
@@ -732,19 +734,19 @@ def _admin_password():
 
 
 def _admin_ip():
-    return request.headers.get("X-Forwarded-For", request.remote_addr or "?")
+    return request.headers.get("X-Forwarded-For", request.remote_addr or "?").split(",")[0].strip()
 
 
 def _admin_limited():
     rec = _ADMIN_FAILS.get(_admin_ip())
-    return bool(rec and rec[0] >= 8 and time.time() - rec[1] < 900)
+    return bool(rec and rec[0] >= 8 and _adm_time.time() - rec[1] < 900)
 
 
 def _admin_fail():
     key = _admin_ip()
-    c, t0 = _ADMIN_FAILS.get(key, [0, time.time()])
-    if time.time() - t0 > 900:
-        c, t0 = 0, time.time()
+    c, t0 = _ADMIN_FAILS.get(key, [0, _adm_time.time()])
+    if _adm_time.time() - t0 > 900:
+        c, t0 = 0, _adm_time.time()
     _ADMIN_FAILS[key] = [c + 1, t0]
 
 
@@ -810,12 +812,12 @@ def admin_stats():
     if gate:
         return gate
     users = data_read().get("users") or {}
-    day0 = time.time() - time.time() % 86400
+    day0 = _time.time() - _time.time() % 86400
     total = len(users)
     paid = sum(1 for u in users.values() if (u or {}).get("paid"))
     gh = sum(1 for u in users.values() if (u or {}).get("provider") == "github")
     local = sum(1 for u in users.values() if (u or {}).get("provider") == "local")
-    today = sum(1 for u in users.values() if (u or {}).get("created") or 0 >= day0)
+    today = sum(1 for u in users.values() if ((u or {}).get("created") or 0) >= day0)
     return jsonify(total=total, paid=paid, github=gh, local=local, today=today)
 
 
@@ -905,7 +907,7 @@ def douyin_cookie_file():
         nl = chr(10)
         with open(cf, "w", encoding="utf-8") as fh:
             fh.write("# Netscape HTTP Cookie File" + nl)
-            exp = str(int(time.time()) + 86400)
+            exp = str(int(_time.time()) + 86400)
             for c in jars:
                 fh.write("\t".join([c.domain, "TRUE", c.path,
                           "FALSE" if not c.secure else "TRUE", exp, c.name, c.value or ""]) + nl)

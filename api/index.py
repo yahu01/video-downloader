@@ -231,11 +231,15 @@ def api_me():
         providers.append("github")
     if (data_config().get("google") or {}).get("client_id"):
         providers.append("google")
+    ad = data_config().get("ad") or {}
+    if not ad.get("enabled"):
+        ad = {}
     return jsonify(
         user=({"name": uid, "paid": bool(prof.get("paid"))} if prof else None),
         paid_required=bool(_cfg_get("paid_required", False)),
         price=_cfg_get("price", 9.9),
-        oauth=providers)
+        oauth=providers,
+        ad=ad)
 
 
 def _rq_get_img(url):
@@ -954,7 +958,8 @@ def admin_config_get():
     c = data_read().get("config") or {}
     return jsonify(paid_required=bool(c.get("paid_required")),
                    price=c.get("price", 9.9),
-                   admin_user=_admin_user())
+                   admin_user=_admin_user(),
+                   ad=c.get("ad") or {})
 
 
 @app.post("/api/admin/config")
@@ -976,6 +981,16 @@ def admin_config_set():
         c["admin_user"] = str(d["admin_user"]).strip()
     if d.get("admin_pass"):
         c["admin_pass_hash"] = generate_password_hash(str(d["admin_pass"]))
+    if "ad" in d:
+        a = d.get("ad") or {}
+        c["ad"] = {
+            "enabled": bool(a.get("enabled")),
+            "title": str(a.get("title") or "")[:60],
+            "text": str(a.get("text") or "")[:200],
+            "url": str(a.get("url") or "")[:300],
+            "image": str(a.get("image") or "")[:300],
+            "button": str(a.get("button") or "")[:20],
+        }
     data_write(dd)
     return jsonify(ok=True)
 

@@ -199,6 +199,7 @@ tr:hover td{background:rgba(59,130,246,.04)}
       <div class="sideItem on" data-t="dash" onclick="showTab('dash')"><span class="si">📊</span> 数据总览</div>
       <div class="sideItem" data-t="users" onclick="showTab('users')"><span class="si">👥</span> 用户管理</div>
       <div class="sideItem" data-t="set" onclick="showTab('set')"><span class="si">⚙️</span> 收费与安全</div>
+      <div class="sideItem" data-t="ad" onclick="showTab('ad')"><span class="si">📢</span> 广告位管理</div>
       <div class="sideItem" data-t="sys" onclick="showTab('sys')"><span class="si">🛰️</span> 系统信息</div>
     </div>
 
@@ -280,6 +281,55 @@ tr:hover td{background:rgba(59,130,246,.04)}
         </div>
       </div>
 
+      <!-- 广告位 -->
+      <div id="t-ad" style="display:none">
+        <h2>广告位管理</h2>
+        <p class="desc">配置前台首页横幅广告（hero 下方展示区），保存后前台立即生效</p>
+        <div class="card">
+          <div class="setRow">
+            <div><div class="t">启用广告位</div>
+              <div class="d">关闭后前台不展示任何广告内容。</div></div>
+            <label class="switch"><input type="checkbox" id="adOn"><span class="slider"></span></label>
+          </div>
+          <div class="setRow">
+            <div><div class="t">广告标题</div>
+              <div class="d">一行主文案，最多 60 字。</div></div>
+            <input id="adTitle" type="text" style="width:260px" maxlength="60" placeholder="例：云服务器限时特惠">
+          </div>
+          <div class="setRow">
+            <div><div class="t">广告文案</div>
+              <div class="d">副文案说明，最多 200 字，可留空。</div></div>
+            <input id="adText" type="text" style="width:260px" maxlength="200" placeholder="例：新用户 1 折起，点击注册领取">
+          </div>
+          <div class="setRow">
+            <div><div class="t">跳转链接</div>
+              <div class="d">点击广告打开的地址（http/https），留空则不可点击。</div></div>
+            <input id="adUrl" type="text" style="width:260px" placeholder="https://…">
+          </div>
+          <div class="setRow">
+            <div><div class="t">图片地址（可选）</div>
+              <div class="d">横幅左侧展示的正方形图，建议 200×200 以上。</div></div>
+            <input id="adImage" type="text" style="width:260px" placeholder="https://…/banner.png">
+          </div>
+          <div class="setRow">
+            <div><div class="t">按钮文字</div>
+              <div class="d">右侧按钮文案，留空默认「了解详情」。</div></div>
+            <input id="adButton" type="text" style="width:260px" maxlength="20" placeholder="了解详情">
+          </div>
+          <div style="margin-top:18px;display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+            <button class="btn saveBtn" onclick="saveAd()">保存广告</button>
+            <button class="btnGhost" onclick="loadAd()">重置</button>
+          </div>
+        </div>
+        <div class="card">
+          <h3>👁️ 前台效果预览</h3>
+          <div style="background:#0a0e16;border-radius:14px;padding:20px">
+            <div id="adPreview"></div>
+          </div>
+          <p class="desc" style="margin:12px 0 0">以上为前台实际样式预览（英文站配色），用户看到的横幅与此一致。</p>
+        </div>
+      </div>
+
       <!-- 系统 -->
       <div id="t-sys" style="display:none">
         <h2>系统信息</h2>
@@ -348,10 +398,11 @@ $("#pass").addEventListener("keydown", e=>{ if(e.key==="Enter") $("#cap").focus(
 /* ---------- 标签页 ---------- */
 function showTab(t){
   document.querySelectorAll(".sideItem").forEach(b=>b.classList.toggle("on", b.dataset.t===t));
-  ["dash","users","set","sys"].forEach(x=>$("#t-"+x).style.display = x===t ? "block" : "none");
+  ["dash","users","set","ad","sys"].forEach(x=>$("#t-"+x).style.display = x===t ? "block" : "none");
   if(t==="dash") refreshDash();
   if(t==="users") loadUsers();
   if(t==="set") loadConfig();
+  if(t==="ad") loadAd();
 }
 
 /* ---------- 总览 ---------- */
@@ -462,6 +513,56 @@ async function saveSet(){
     $("#setPass").value = "";
     toast("设置已保存，立即生效");
     refreshDash();
+  }catch(e){ toast(e.message, false); }
+}
+
+/* ---------- 广告位 ---------- */
+function adHtml(a){
+  const btn = a.button || "了解详情";
+  return `
+    <a style="display:flex;align-items:center;gap:14px;background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.09);
+      border-radius:14px;padding:14px 18px;color:#e7ecf5;text-decoration:none">
+      ${a.image ? `<img src="${esc(a.image)}" alt="" style="width:72px;height:72px;border-radius:10px;object-fit:cover;flex:0 0 auto" onerror="this.style.display='none'">` : ""}
+      <div style="flex:1;min-width:0">
+        <div style="font-size:14.5px;font-weight:700;display:flex;align-items:center;gap:8px">${esc(a.title||"")}
+          <span style="font-size:10px;font-weight:400;color:#8b94a7;border:1px solid rgba(255,255,255,.09);border-radius:4px;padding:1px 5px;letter-spacing:1px">广告</span></div>
+        ${a.text ? `<div style="font-size:12.5px;color:#8b94a7;margin-top:5px;line-height:1.6">${esc(a.text)}</div>` : ""}
+      </div>
+      ${a.url ? `<span style="flex:0 0 auto;font-size:12.5px;font-weight:600;color:#fff;background:linear-gradient(135deg,#6d5efc,#22d3ee);border-radius:9px;padding:8px 14px">${esc(btn)} →</span>` : ""}
+    </a>`;
+}
+function adFromForm(){
+  return {enabled: $("#adOn").checked, title: $("#adTitle").value.trim(), text: $("#adText").value.trim(),
+          url: $("#adUrl").value.trim(), image: $("#adImage").value.trim(), button: $("#adButton").value.trim()};
+}
+async function loadAd(){
+  try{
+    const c = await api("/api/admin/config");
+    const a = c.ad || {};
+    $("#adOn").checked = !!a.enabled;
+    $("#adTitle").value = a.title || "";
+    $("#adText").value = a.text || "";
+    $("#adUrl").value = a.url || "";
+    $("#adImage").value = a.image || "";
+    $("#adButton").value = a.button || "";
+    $("#adPreview").innerHTML = a.enabled && a.title ? adHtml(a)
+      : '<div style="color:#8b94a7;font-size:13px;padding:6px 0">广告未启用或未填写标题，前台不展示。</div>';
+  }catch(e){ toast(e.message, false); }
+}
+function adPreviewLive(){
+  const a = adFromForm();
+  $("#adPreview").innerHTML = a.enabled && a.title ? adHtml(a)
+    : '<div style="color:#8b94a7;font-size:13px;padding:6px 0">广告未启用或未填写标题，前台不展示。</div>';
+}
+["adOn","adTitle","adText","adUrl","adImage","adButton"].forEach(id=>{
+  const el = document.getElementById(id);
+  el.addEventListener("input", adPreviewLive);
+  el.addEventListener("change", adPreviewLive);
+});
+async function saveAd(){
+  try{
+    await api("/api/admin/config", {ad: adFromForm()});
+    toast("广告配置已保存，前台已生效");
   }catch(e){ toast(e.message, false); }
 }
 

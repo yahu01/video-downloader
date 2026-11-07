@@ -633,7 +633,7 @@ def api_parse():
         return jsonify(error=_e("请输入网址", "Please enter a URL", lang)), 400
     if BLOCK_RE.search(url):
         return jsonify(error=_e(
-            "小红书/快手暂不支持云解析（站点无公开接口），请使用本地版",
+            "小红书/快手暂不支持云端解析（平台强制登录+签名风控），已支持：抖音/TikTok/YouTube/Twitter 等",
             "Xiaohongshu/Kuaishou are not supported in cloud edition", 400)), 400
 
     # 抖音/TikTok 图集（images only）→ 服务端打包 ZIP 直接下载

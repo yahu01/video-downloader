@@ -230,6 +230,9 @@ tr:hover td{background:rgba(59,130,246,.04)}
             <div class="distRow"><div class="lbl"><span>PRO 付费用户</span><b id="pPro">0%</b></div>
               <div class="track"><div class="fill fPro" id="fPro" style="width:0"></div></div></div>
             <p class="desc" style="margin:14px 0 0">批量付费开关：<b id="paidState">-</b> · 单次开通价格：<b id="priceState">-</b> 元</p>
+            <div class="distRow" style="margin-top:12px"><div class="lbl"><span>🔑 YouTube Cookie</span><b id="ckState">检查中…</b></div>
+              <div class="track"><div class="fill fPro" id="ckBar" style="width:0"></div></div></div>
+            <p class="desc" id="ckHint" style="margin:8px 0 0">—</p>
           </div>
         </div>
       </div>
@@ -417,6 +420,7 @@ async function refreshDash(){
     $("#sToday").textContent = s.today||0;
     $("#paidState").textContent = s.paid_required ? "已开启" : "未开启";
     $("#priceState").textContent = s.price ?? 9.9;
+    drawCookie(s.cookie);
   }catch(e){}
   try{
     const d = await api("/api/admin/data");
@@ -444,6 +448,30 @@ function drawChart(){
       </div>
       <span class="dl">${d.label}</span>
     </div>`).join("");
+}
+
+function drawCookie(ck){
+  const el = $("#ckState"), bar = $("#ckBar"), hint = $("#ckHint");
+  if(!ck || !ck.configured){
+    el.textContent = "未配置"; el.style.color = "var(--err)";
+    bar.style.width = "0";
+    hint.textContent = "未配置 YouTube cookie —— YouTube 下载不可用。导出后由站长配置 COOKIES 环境变量。";
+    return;
+  }
+  if(ck.days_left === null){
+    el.textContent = "已配置（会话 cookie）"; el.style.color = "var(--warn)";
+    bar.style.width = "50%";
+    hint.textContent = "该 cookie 不含到期时间，失效时 YouTube 下载报“需登录”，重新导出替换即可。";
+    return;
+  }
+  const d = ck.days_left;
+  el.textContent = d + " 天后到期（" + ck.expires + "）";
+  const col = d < 7 ? "var(--err)" : (d < 14 ? "var(--warn)" : "var(--ok)");
+  el.style.color = col;
+  bar.style.width = Math.max(5, Math.min(100, d / 2)) + "%";
+  hint.textContent = d < 14
+    ? "⚠️ 即将过期：YouTube 下载可能很快失效，请重新导出 cookie 更新 COOKIES 环境变量。"
+    : "状态正常。失效时 YouTube 下载会报“需登录”，届时重新导出替换即可。";
 }
 
 function drawDist(){

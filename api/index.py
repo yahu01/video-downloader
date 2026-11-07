@@ -1005,6 +1005,23 @@ def admin_data():
                            "price": float(data_config().get("price", PRICE))})
 
 
+def _yt_cookie_status():
+    """解析 COOKIES 环境变量里的 Netscape cookie，报告 YouTube 会话有效期"""
+    raw = os.environ.get("COOKIES", "").strip()
+    if not raw:
+        return {"configured": False, "days_left": None, "expires": None}
+    exp = 0
+    for line in raw.splitlines():
+        p = line.split("\t")
+        if len(p) >= 5 and p[4].strip().isdigit():
+            exp = max(exp, int(p[4]))
+    if not exp:
+        return {"configured": True, "days_left": None, "expires": None}
+    days = int((exp - _time.time()) // 86400)
+    return {"configured": True, "days_left": days,
+            "expires": _time.strftime("%Y-%m-%d", _time.localtime(exp))}
+
+
 @app.get("/api/admin/stats")
 def admin_stats():
     gate = _admin_gate()
@@ -1017,7 +1034,8 @@ def admin_stats():
     gh = sum(1 for u in users.values() if (u or {}).get("provider") == "github")
     local = sum(1 for u in users.values() if (u or {}).get("provider") == "local")
     today = sum(1 for u in users.values() if ((u or {}).get("created") or 0) >= day0)
-    return jsonify(total=total, paid=paid, github=gh, local=local, today=today)
+    return jsonify(total=total, paid=paid, github=gh, local=local, today=today,
+                   cookie=_yt_cookie_status())
 
 
 @app.post("/api/admin/user/paid")

@@ -1260,6 +1260,11 @@ def _pick_stream(meta, fmt):
         return None
     def key(f):
         return ((f.get("height") or 0), (f.get("tbr") or 0))
+    def _route(f, ext_default="mp4"):
+        """HLS(m3u8) 流必须走 ffmpeg 管道转封装；https 直链走 plain"""
+        if (f.get("protocol") or "").startswith("m3u8"):
+            return {"v": f["url"]}, f.get("http_headers") or {}, ext_default, "merge"
+        return f["url"], f.get("http_headers") or {}, f.get("ext") or ext_default, "plain"
     if fmt == "ba":
         auds = [f for f in fmts if f.get("vcodec") in (None, "none")]
         if not auds:
@@ -1274,24 +1279,22 @@ def _pick_stream(meta, fmt):
         prog = [f for f in vids if f.get("acodec") not in (None, "none")]
         if prog:                                   # 有带音频的合成格式（如 YouTube 18/22）
             f = max(prog, key=key)
-            return f["url"], f.get("http_headers") or {}, f.get("ext") or "mp4", "plain"
+            return _route(f)
         if vids and auds:                          # 分离流 → ffmpeg 管道合并
             v = max(vids, key=key)
             a = max(auds, key=lambda x: x.get("tbr") or 0)
             return {"v": v["url"], "a": a["url"]},                    v.get("http_headers") or {}, "mp4", "merge"
         if vids:                                   # 只有视频流
             f = max(vids, key=key)
-            return f["url"], f.get("http_headers") or {}, f.get("ext") or "mp4", "plain"
+            return _route(f)
         if auds:                                   # 纯音频站（如 SoundCloud）
             f = max(auds, key=lambda x: x.get("tbr") or 0)
-            if (f.get("protocol") or "").startswith("m3u8"):
-                return {"v": f["url"]}, f.get("http_headers") or {}, "m4a", "merge"
-            return f["url"], f.get("http_headers") or {}, f.get("ext") or "m4a", "plain"
+            return _route(f, "m4a")
         return None
     f = next((f for f in fmts if str(f.get("format_id")) == fmt), None)
     if not f:
         return None
-    return f["url"], f.get("http_headers") or {}, f.get("ext") or "mp4", "plain"
+    return _route(f)
 
 
 @app.get("/api/download")

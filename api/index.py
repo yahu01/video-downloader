@@ -1082,6 +1082,21 @@ def _yt_cookie_status():
             "expires": _time.strftime("%Y-%m-%d", _time.localtime(exp))}
 
 
+@app.get("/api/yt_debug")
+def yt_debug():
+    import yt_dlp as _y
+    has_deno, has_bg = _ensure_yt_runtime()
+    deno_v = ""
+    if has_deno:
+        try:
+            deno_v = subprocess.run(["/tmp/deno/deno", "--version"], capture_output=True, text=True, timeout=10).stdout.strip()[:30]
+        except Exception as e:
+            deno_v = f"exec失败: {str(e)[:60]}"
+    return jsonify(yt_dlp=_y.version.__version__, deno_present=has_deno, deno_version=deno_v,
+                   bgutil_present=has_bg,
+                   plugin=any("bgutil" in str(getattr(_y, "_plugins", {}) or {})) )
+
+
 @app.get("/api/admin/stats")
 def admin_stats():
     gate = _admin_gate()

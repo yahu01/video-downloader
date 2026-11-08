@@ -1263,7 +1263,7 @@ def _pick_stream(meta, fmt):
     def _route(f, ext_default="mp4"):
         """HLS(m3u8) 流必须走 ffmpeg 管道转封装；https 直链走 plain"""
         if (f.get("protocol") or "").startswith("m3u8"):
-            return {"v": f["url"]}, f.get("http_headers") or {}, ext_default, "merge"
+            return {"v": f["url"], "_hls": True}, f.get("http_headers") or {}, ext_default, "merge"
         return f["url"], f.get("http_headers") or {}, f.get("ext") or ext_default, "plain"
     if fmt == "ba":
         auds = [f for f in fmts if f.get("vcodec") in (None, "none")]
@@ -1283,7 +1283,8 @@ def _pick_stream(meta, fmt):
         if vids and auds:                          # 分离流 → ffmpeg 管道合并
             v = max(vids, key=key)
             a = max(auds, key=lambda x: x.get("tbr") or 0)
-            return {"v": v["url"], "a": a["url"]},                    v.get("http_headers") or {}, "mp4", "merge"
+            _hls = any((x.get("protocol") or "").startswith("m3u8") for x in (v, a))
+            return {"v": v["url"], "a": a["url"], "_hls": _hls},          v.get("http_headers") or {}, "mp4", "merge"
         if vids:                                   # 只有视频流
             f = max(vids, key=key)
             return _route(f)
@@ -1400,7 +1401,10 @@ def _download_impl():
                "-headers", _headers_str(vh), "-i", vurl]
     if aurl:
         cmd += ["-map", "1:a", "-map", "0:v"] if False else []
-    cmd += ["-c", "copy", "-movflags", "frag_keyframe+empty_moov+faststart",
+    cmd += ["-c", "copy"]
+    if isinstance(src, dict) and src.get("_hls"):
+        cmd += ["-bsf:a", "aac_adtstoasc"]   # HLS 的 ADTS AAC → MP4 ASC
+    cmd += ["-movflags", "frag_keyframe+empty_moov+faststart",
             "-f", "mp4", "pipe:1"]
     try:
         penv = dict(os.environ)

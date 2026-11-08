@@ -748,6 +748,11 @@ def api_parse():
         cf = douyin_cookie_file()
         if cf:
             opts["cookiefile"] = cf
+    if re.search(r"youtube\.com|youtu\.be", url, re.I):
+        cf = cookies_file()   # YouTube 登录态（COOKIES 环境变量），过人机验证墙
+        if cf:
+            opts["cookiefile"] = cf
+            opts["extractor_args"] = {"youtube": {"player_client": ["tv,web_safari,web"]}}
     try:
         with yt_dlp.YoutubeDL(opts) as y:
             info = y.extract_info(url, download=False)
@@ -1231,15 +1236,25 @@ def _download_impl():
     # 第一步：dump-json 验证 + 元数据（直链在这里面）
     if DOUYIN_RE.search(url):
         base = await_douyin_cookies(base, url)
+    if re.search(r"youtube\.com|youtu\.be", url, re.I):
+        cf = cookies_file()
+        if cf:
+            base += ["--cookies", cf]
     probe = base + ["--dump-json", "--no-playlist", url]
     try:
         pr = subprocess.run(probe, capture_output=True, text=True, timeout=120)
     except subprocess.TimeoutExpired:
         return jsonify(error=_e("解析超时，请重试", "Parse timed out, retry", lang)), 504
     if pr.returncode != 0 or not pr.stdout.strip():
-        detail = _scrub(pr.stderr[-200:]) if pr.stderr else "no output"
-        return jsonify(error=_e("无法解析该链接：" + detail,
-                                "Cannot parse this link: " + detail, lang)), 502
+        # 受限视频（仅故事板等）：忽略无格式错误重试拿元数据
+        pr2 = subprocess.run(probe + ["--ignore-no-formats-error"],
+                             capture_output=True, text=True, timeout=120)
+        if pr2.returncode == 0 and pr2.stdout.strip():
+            pr = pr2
+        else:
+            detail = _scrub(pr.stderr[-200:]) if pr.stderr else "no output"
+            return jsonify(error=_e("无法解析该链接：" + detail,
+                                    "Cannot parse this link: " + detail, lang)), 502
     try:
         meta = json.loads(pr.stdout.strip().splitlines()[-1])
     except ValueError:

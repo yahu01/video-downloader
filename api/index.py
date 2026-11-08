@@ -1084,6 +1084,14 @@ def _yt_cookie_status():
 
 @app.get("/api/yt_debug")
 def yt_debug():
+    import traceback
+    try:
+        return _yt_debug_impl()
+    except Exception:
+        return jsonify(tb=traceback.format_exc()[-1400:]), 500
+
+
+def _yt_debug_impl():
     import yt_dlp as _y
     has_deno, has_bg = _ensure_yt_runtime()
     deno_v = ""
@@ -1093,8 +1101,7 @@ def yt_debug():
         except Exception as e:
             deno_v = f"exec失败: {str(e)[:60]}"
     return jsonify(yt_dlp=_y.version.__version__, deno_present=has_deno, deno_version=deno_v,
-                   bgutil_present=has_bg,
-                   plugin=any("bgutil" in str(getattr(_y, "_plugins", {}) or {})) )
+                   bgutil_present=has_bg)
 
 
 @app.get("/api/admin/stats")

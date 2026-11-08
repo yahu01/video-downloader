@@ -1322,6 +1322,11 @@ def _download_impl():
     proxy = os.environ.get("PROXY_URL", "")
     base = [sys.executable, "-m", "yt_dlp", "--ignore-config", "--no-warnings",
             "--no-playlist", "--proxy", proxy]
+    # Vercel 依赖不在默认 site-packages：把当前进程的 yt_dlp 路径传给子进程
+    import yt_dlp as _ydl_mod
+    _env = os.environ.copy()
+    _sp = os.path.dirname(os.path.dirname(_ydl_mod.__file__))
+    _env["PYTHONPATH"] = (_env.get("PYTHONPATH", "") + os.pathsep + _sp).lstrip(os.pathsep)
     cf = cookies_file()
     if cf:
         base += ["--cookies", cf]
@@ -1336,13 +1341,13 @@ def _download_impl():
         base += _yt_runtime_cli()
     probe = base + ["--dump-json", "--no-playlist", url]
     try:
-        pr = subprocess.run(probe, capture_output=True, text=True, timeout=120)
+        pr = subprocess.run(probe, capture_output=True, text=True, timeout=120, env=_env)
     except subprocess.TimeoutExpired:
         return jsonify(error=_e("解析超时，请重试", "Parse timed out, retry", lang)), 504
     if pr.returncode != 0 or not pr.stdout.strip():
         # 受限视频（仅故事板等）：忽略无格式错误重试拿元数据
         pr2 = subprocess.run(probe + ["--ignore-no-formats-error"],
-                             capture_output=True, text=True, timeout=120)
+                             capture_output=True, text=True, timeout=120, env=_env)
         if pr2.returncode == 0 and pr2.stdout.strip():
             pr = pr2
         else:

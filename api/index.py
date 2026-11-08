@@ -57,6 +57,61 @@ def ffmpeg_path():
     return _FF
 
 
+# ---------------- YouTube PO Token 运行时（deno + bgutil） ----------------
+
+_DENO_URL = "https://github.com/denoland/deno/releases/latest/download/deno-x86_64-unknown-linux-gnu.zip"
+
+def _ensure_yt_runtime():
+    """确保 /tmp 有 deno 与 bgutil 运行时（PO Token + n-challenge 必需）。
+    冷启动自动下载，实例存活期间复用。"""
+    deno = "/tmp/deno/deno"
+    bg = "/tmp/bgutil/build/generate_once.js"
+    try:
+        if not os.path.exists(deno):
+            os.makedirs("/tmp/deno", exist_ok=True)
+            zpath = "/tmp/deno.zip"
+            urllib.request.urlretrieve(_DENO_URL, zpath)
+            import zipfile as _zf
+            with _zf.ZipFile(zpath) as z:
+                z.extractall("/tmp/deno")
+            os.chmod(deno, 0o755)
+    except Exception:
+        pass
+    try:
+        if not os.path.exists(bg):
+            os.makedirs("/tmp/bgutil", exist_ok=True)
+            import tarfile as _tf
+            vendor = os.path.join(os.path.dirname(os.path.abspath(__file__)), "vendor", "bgutil.tar.gz")
+            with _tf.open(vendor) as t:
+                t.extractall("/tmp/bgutil")
+    except Exception:
+        pass
+    return os.path.exists(deno), os.path.exists(bg)
+
+
+def _yt_runtime_opts():
+    """YouTube 解析的 Python-API 参数：PO Token 脚本 + JS 运行时 + 远程求解组件"""
+    has_deno, _ = _ensure_yt_runtime()
+    ea = {"youtube": {"player_client": ["tv,web_safari,web"]}}
+    ea["youtubepot-bgutilscript"] = {"script_path": ["/tmp/bgutil/build/generate_once.js"]}
+    o = {"extractor_args": ea, "remote_components": ["ejs:github"]}
+    if has_deno:
+        o["jsruntimes"] = ["deno:/tmp/deno/deno"]
+    return o
+
+
+def _yt_runtime_cli():
+    """YouTube 下载（CLI 形式）的同款参数"""
+    has_deno, has_bg = _ensure_yt_runtime()
+    a = []
+    if has_bg:
+        a += ["--extractor-args", "youtubepot-bgutilscript:script_path=/tmp/bgutil/build/generate_once.js"]
+    if has_deno:
+        a += ["--js-runtimes", "deno:/tmp/deno/deno"]
+    a += ["--remote-components", "ejs:github"]
+    return a
+
+
 # ---------------- 用户体系（GitHub 仓库当数据库） ----------------
 
 DATA_REPO = os.environ.get("DATA_REPO", "yahu01/video-downloader-data")
@@ -752,7 +807,7 @@ def api_parse():
         cf = cookies_file()   # YouTube 登录态（COOKIES 环境变量），过人机验证墙
         if cf:
             opts["cookiefile"] = cf
-            opts["extractor_args"] = {"youtube": {"player_client": ["tv,web_safari,web"]}}
+            opts.update(_yt_runtime_opts())
     try:
         with yt_dlp.YoutubeDL(opts) as y:
             info = y.extract_info(url, download=False)
@@ -1240,6 +1295,7 @@ def _download_impl():
         cf = cookies_file()
         if cf:
             base += ["--cookies", cf]
+        base += _yt_runtime_cli()
     probe = base + ["--dump-json", "--no-playlist", url]
     try:
         pr = subprocess.run(probe, capture_output=True, text=True, timeout=120)

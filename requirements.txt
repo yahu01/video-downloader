@@ -3,3 +3,4 @@ requests
 yt-dlp
 imageio-ffmpeg
 douyin-tiktok-scraper
+bgutil-ytdlp-pot-provider==2.0.2

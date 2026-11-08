@@ -69,9 +69,13 @@ def _ensure_yt_runtime():
     try:
         if not os.path.exists(deno):
             os.makedirs("/tmp/deno", exist_ok=True)
-            zpath = "/tmp/deno.zip"
-            urllib.request.urlretrieve(_DENO_URL, zpath)
             import zipfile as _zf
+            # 优先用部署包内置的 Linux deno（冷启动零网络依赖）
+            bundled = os.path.join(os.path.dirname(os.path.abspath(__file__)), "vendor", "deno-linux.zip")
+            zpath = bundled if os.path.exists(bundled) else None
+            if not zpath:
+                zpath = "/tmp/deno.zip"
+                urllib.request.urlretrieve(_DENO_URL, zpath)
             with _zf.ZipFile(zpath) as z:
                 z.extractall("/tmp/deno")
             os.chmod(deno, 0o755)

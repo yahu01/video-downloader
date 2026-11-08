@@ -96,7 +96,7 @@ def _yt_runtime_opts():
     ea["youtubepot-bgutilscript"] = {"script_path": ["/tmp/bgutil/build/generate_once.js"]}
     o = {"extractor_args": ea, "remote_components": ["ejs:github"]}
     if has_deno:
-        o["js_runtimes"] = ["deno:/tmp/deno/deno"]
+        o["js_runtimes"] = {"deno": {"path": "/tmp/deno/deno"}}
     return o
 
 

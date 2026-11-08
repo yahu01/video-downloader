@@ -1082,44 +1082,6 @@ def _yt_cookie_status():
             "expires": _time.strftime("%Y-%m-%d", _time.localtime(exp))}
 
 
-@app.get("/api/yt_debug")
-def yt_debug():
-    import traceback
-    try:
-        return _yt_debug_impl()
-    except Exception:
-        return jsonify(tb=traceback.format_exc()[-1400:]), 500
-
-
-def _yt_debug_impl():
-    import yt_dlp as _y
-    has_deno, has_bg = _ensure_yt_runtime()
-    logs = []
-    deno_v = ""
-    if has_deno:
-        try:
-            deno_v = subprocess.run(["/tmp/deno/deno", "--version"], capture_output=True, text=True, timeout=10).stdout.strip()[:30]
-        except Exception:
-            deno_v = "exec失败"
-    o = _yt_runtime_opts()
-    o.update({"quiet": True, "no_warnings": False, "noplaylist": True, "skip_download": True,
-              "cookiefile": cookies_file() or None,
-              "logger": type("L", (), {"debug": staticmethod(lambda *a, **k: logs.append(" ".join(map(str, a))[:150])),
-                                        "warning": staticmethod(lambda *a, **k: logs.append("W: " + " ".join(map(str, a))[:150])),
-                                        "error": staticmethod(lambda *a, **k: logs.append("E: " + " ".join(map(str, a))[:150]))})()})
-    nf = 0
-    try:
-        with _y.YoutubeDL(o) as y:
-            info = y.extract_info("https://www.youtube.com/watch?v=jNQXAC9IVRw", download=False)
-        nf = len(info.get("formats") or [])
-        title = (info.get("title") or "")[:40]
-    except Exception as e:
-        title = f"EXC {str(e)[:120]}"
-    return jsonify(yt_dlp=_y.version.__version__, deno_present=has_deno, deno_version=deno_v,
-                   bgutil_present=has_bg, formats=nf, title=title, logs=logs[-12:])
-    return jsonify(ok=True)
-
-
 @app.get("/api/admin/stats")
 def admin_stats():
     gate = _admin_gate()

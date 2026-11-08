@@ -475,7 +475,7 @@ async function parseOne(url){
     if(j.type === "playlist"){ renderPlaylist(j); }
     else if(j.thirdparty && j.type2 === "gallery"){ LAST = j; renderGallery(j); toast(t("parseOk"), "ok"); }
     else if(j.thirdparty){ LAST = j; renderThirdparty(j); toast(t("parseOk"), "ok"); }
-    else { LAST = j; renderVideo(j); toast(t("parseOk"), "ok"); }
+    else { LAST = j; render(j); toast(t("parseOk"), "ok"); }
   }catch(e){
     $("#resultArea").innerHTML = `<div class="panel"><div class="err-box">❌ ${esc(t("parseFail"))}：${esc(e.message)}</div></div>`;
   }finally{

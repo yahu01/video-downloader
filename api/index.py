@@ -92,11 +92,11 @@ def _ensure_yt_runtime():
 def _yt_runtime_opts():
     """YouTube 解析的 Python-API 参数：PO Token 脚本 + JS 运行时 + 远程求解组件"""
     has_deno, _ = _ensure_yt_runtime()
-    ea = {"youtube": {"player_client": ["tv,web_safari,web"]}}
+    ea = {"youtube": {"player_client": ["tv", "web_safari", "web"]}}
     ea["youtubepot-bgutilscript"] = {"script_path": ["/tmp/bgutil/build/generate_once.js"]}
     o = {"extractor_args": ea, "remote_components": ["ejs:github"]}
     if has_deno:
-        o["jsruntimes"] = ["deno:/tmp/deno/deno"]
+        o["js_runtimes"] = ["deno:/tmp/deno/deno"]
     return o
 
 
